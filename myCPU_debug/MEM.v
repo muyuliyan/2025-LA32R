@@ -26,12 +26,11 @@ module MEM_stage(
 
     output ms_allow_in,
     output ms_ready_go,
-    output ms_to_wb_valid
+    output reg ms_valid
 );
-reg ms_valid;
 
-assign sram_en    = data_sram_en;
-assign sram_we    = data_sram_we;
+assign sram_en    = to_ms_valid ? data_sram_en : 1'b0;
+assign sram_we    = to_ms_valid ? data_sram_we : 4'b0;
 assign sram_addr  = data_sram_addr;
 assign sram_wdata = data_sram_wdata;
 assign rf_wdata_out = data_sram_en ? data_sram_rdata : rf_wdata;
@@ -47,9 +46,10 @@ always @(posedge clk) begin
     end
 end
 
+assign ms_pc       = pc;
 assign ms_ready_go = !stall; 
 assign ms_allow_in = !ms_valid || ms_ready_go && wb_allow_in;
-assign ms_to_wb_valid = ms_valid && ms_ready_go;
+
 endmodule
 
 module WB_reg (
@@ -70,7 +70,7 @@ module WB_reg (
     
 always @(posedge clk) begin
     if(reset) begin
-        WB_pc       <= 32'h1bfffffc;
+        WB_pc       <= 32'h1c000000;
         WB_rf_we    <= 4'b0;
         WB_rf_waddr <= 5'b0;
         WB_rf_wdata <= 32'b0;

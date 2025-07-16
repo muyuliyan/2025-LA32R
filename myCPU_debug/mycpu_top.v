@@ -21,10 +21,10 @@ module mycpu_top (
 );
 
 // 慢一拍进入流水线
-wire reset = ~resetn;
-// always @(posedge clk) begin
-//     reset <= ~resetn;
-// end
+reg reset;
+always @(posedge clk) begin
+    reset <= ~resetn;
+end
 
 //======================= 模块间连接信号 =======================
     // pre_IF
@@ -101,13 +101,22 @@ wire reset = ~resetn;
     // WB
     wire wb_allow_in;
     wire wb_ready_go;
+    wire [3:0]  wb_rf_we;        
+    wire [4:0]  wb_rf_waddr;      
+    wire [31:0] wb_rf_wdata; 
     // 全局控制信号
     wire br_taken_cancel;
     wire stall;
+
+    wire [31:0] rf_rdata1;
+    wire [31:0] rf_rdata2;
+    wire [31:0] rf_raddr1;
+    wire [31:0] rf_raddr2;
 //======================= 模块实例化 =======================
     // 寄存器堆
     regfile u_regfile (
         .clk    (clk),
+        .reset  (reset),
         .raddr1 (rf_raddr1),
         .rdata1 (rf_rdata1),
         .raddr2 (rf_raddr2),
@@ -144,7 +153,7 @@ wire reset = ~resetn;
         .fs_pc           (fs_pc),
         .inst            (inst),  
         .fs_ready_go     (fs_ready_go),
-        .fs_to_ds_valid  (fs_to_ds_valid)
+        .fs_valid        (fs_to_ds_valid)
     );
     // IF/ID reg
     ID_reg u_ID_reg(
@@ -192,7 +201,7 @@ wire reset = ~resetn;
         .rf_waddr        (ds_rf_waddr),
         .ds_allow_in     (ds_allow_in),
         .ds_ready_go     (ds_ready_go),
-        .ds_to_es_valid  (ds_to_es_valid)
+        .ds_valid        (ds_to_es_valid)
     );
     // ID/EXE reg
     EXE_reg u_EXE_reg(
@@ -260,7 +269,7 @@ wire reset = ~resetn;
         .es_rf_wdata     (es_rf_wdata),
         .es_allow_in     (es_allow_in),
         .es_ready_go     (es_ready_go),
-        .es_to_ms_valid  (es_to_ms_valid)
+        .es_valid        (es_to_ms_valid)
     );
     // EXE/MEM reg
     MEM_reg u_MEM_reg(
@@ -313,7 +322,7 @@ wire reset = ~resetn;
         .sram_wdata      (data_sram_wdata),  
         .ms_allow_in     (ms_allow_in),
         .ms_ready_go     (ms_ready_go),
-        .ms_to_wb_valid  (ms_to_wb_valid)
+        .ms_valid        (ms_to_wb_valid)
     );
     // MEM_WB reg
     WB_reg u_WB_reg(
@@ -354,14 +363,14 @@ assign stall = (es_sram_we != 0) && es_to_ms_valid &&
 
 // debug info generate
 assign debug_wb_pc       = pwb_pc;
-assign debug_wb_rf_we    = {4{wb_rf_we}};
-assign debug_wb_rf_wnum  = wb_rf_waddr;
+assign debug_wb_rf_we    = wb_rf_we;
+assign debug_wb_rf_wnum  = {27'b0 , {wb_rf_waddr}};
 assign debug_wb_rf_wdata = wb_rf_wdata;
 
 // 添加调试语句
 always @(posedge clk) begin
-    $display("PC=%h, reset=%b, br_taken_c=%b, stall=%b", 
-             pfs_pc, reset, br_taken_cancel, stall);
+    $display("PC=%h, reset=%b, br_taken_c=%b, waddr=%h", 
+             pfs_pc, reset, br_taken_cancel, wb_rf_waddr);
 end
 always @(posedge clk) begin
     $display("IF: en=%b addr=%h rdata=%h inst=%h we=%b", 

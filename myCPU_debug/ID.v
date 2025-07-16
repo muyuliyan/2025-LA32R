@@ -38,10 +38,8 @@ module ID_stage(
 
     output ds_allow_in,   
     output ds_ready_go,
-    output ds_to_es_valid
+    output reg ds_valid
 );
-
-reg ds_valid;
 // 指令字段解码
 wire [5:0] op_31_26 = inst[31:26];
 wire [3:0] op_25_22 = inst[25:22];
@@ -91,7 +89,7 @@ wire src1_is_pc    = inst_jirl | inst_bl;
 wire dst_is_r1     = inst_bl;
 wire is_imm        = inst_slli_w | inst_srli_w | inst_srai_w | 
                      inst_addi_w | inst_ld_w | inst_st_w | 
-                     inst_lu12i_w | inst_jirl | inst_bl;
+                     inst_lu12i_w | inst_jirl | inst_bl | inst_b;
     
 // 寄存器读地址选择
 assign rf_raddr1 = rj;
@@ -156,12 +154,12 @@ assign alu_op[11] = inst_lu12i_w;
 assign data_sram_en = inst_ld_w;
 assign data_sram_we = {4{inst_st_w}};
 assign data_sram_addr= alu_src1 + alu_src2;    
-assign rf_we = {4{!(inst_st_w | inst_beq | inst_bne | inst_b)}};
+assign rf_we =  {4{!(inst_st_w | inst_beq | inst_bne | inst_b)}};
 assign rf_waddr = dst_is_r1 ? 5'd1 : rd;
     
 always @(posedge clk) begin
     if(reset) begin
-        ds_valid <= 1'b0;
+        ds_valid <= 1'b1;
     end
     else if (br_taken_cancel) begin
         ds_valid <= 1'b0;
@@ -171,9 +169,14 @@ always @(posedge clk) begin
     end   
 end
 // 流水线控制
+assign ds_pc = pc;
 assign ds_ready_go = !stall;
 assign ds_allow_in = !ds_valid || es_allow_in && ds_ready_go;
-assign ds_to_es_valid = ds_valid && ds_ready_go;
+
+always @(posedge clk) begin
+    $display("[ID_stage] br_offs=%h",
+             br_offs);
+end
 endmodule
 
 module EXE_reg (
@@ -181,8 +184,8 @@ module EXE_reg (
     input reset,
     input ds_ready_go,
     input es_allow_in,
-    input [31:0] ID_rf_raddr1,
-    input [31:0] ID_rf_raddr2,
+    input [4:0] ID_rf_raddr1,
+    input [4:0] ID_rf_raddr2,
     input [31:0] ID_pc,
     input [31:0] ID_alu_src1,
     input [31:0] ID_alu_src2,
@@ -208,7 +211,7 @@ module EXE_reg (
     // ================== 寄存器更新逻辑 ==================
     always @(posedge clk or posedge reset) begin
         if (reset) begin
-            EXE_pc        <= 32'h1bfffffc;
+            EXE_pc        <= 32'h1c000000;
             EXE_alu_src1  <= 32'b0;
             EXE_alu_src2  <= 32'b0;
             EXE_alu_op    <= 12'b0;
@@ -217,8 +220,8 @@ module EXE_reg (
             EXE_sram_addr <= 32'b0;
             EXE_rf_we     <= 4'b0;
             EXE_rf_waddr  <= 5'b0;
-            EXE_rf_raddr1 <= 32'b0;
-            EXE_rf_raddr2 <= 32'b0;
+            EXE_rf_raddr1 <= 5'b0;
+            EXE_rf_raddr2 <= 5'b0;
         end
         else if(ds_ready_go && es_allow_in) begin
             EXE_pc        <= ID_pc;

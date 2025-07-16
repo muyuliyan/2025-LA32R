@@ -11,10 +11,8 @@ module IF_stage (
     output [31:0] fs_pc,
     output [31:0] inst,
     output fs_ready_go,
-    output fs_to_ds_valid
+    output reg fs_valid
 );
-wire fs_allow_in;
-reg fs_valid;
 
 always @(posedge clk) begin
     if(reset) begin
@@ -32,7 +30,6 @@ assign fs_pc = pc;
 assign inst = inst_sram_rdata;
 assign fs_allow_in = !fs_valid || fs_ready_go && ds_allow_in;
 assign fs_ready_go = !stall;
-assign fs_to_ds_valid = fs_valid && fs_ready_go;
 endmodule
 
 module ID_reg (
@@ -49,7 +46,7 @@ module ID_reg (
 
 always @(posedge clk) begin
     if(reset) begin
-        ID_pc <= 32'h1bfffffc;
+        ID_pc <= 32'h1c000000;
         ID_inst <= 32'b0;
     end
     else if(fs_ready_go && ds_allow_in) begin

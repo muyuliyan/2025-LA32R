@@ -3,7 +3,7 @@ module EXE_stage(
     input        reset,
     input [31:0] pc,
     input [11:0] alu_op,       
-    input [3:0]  data_sram_en,       
+    input        data_sram_en,       
     input [3:0]  data_sram_we,       
     input [31:0] data_sram_addr,
     input [3:0]  rf_we,        
@@ -39,13 +39,12 @@ module EXE_stage(
 
     output es_allow_in,
     output es_ready_go,
-    output es_to_ms_valid
+    output reg es_valid
 );
 
 wire [31:0] alu_result;
 wire [31:0] alu_src1_forward;
 wire [31:0] alu_src2_forward;
-reg es_valid;
 
 // ALU源操作数1前递选择
 assign alu_src1_forward = 
@@ -66,6 +65,7 @@ alu u_alu(
     .alu_result (alu_result)
 );
 // 组合逻辑输出
+assign es_pc           = pc;
 assign sram_en         = data_sram_en;
 assign sram_we         = data_sram_we;
 assign sram_addr       = alu_result; 
@@ -86,8 +86,11 @@ end
 // 流水线控制
 assign es_ready_go = !stall;
 assign es_allow_in = !es_valid || ms_allow_in && es_ready_go;
-assign es_to_ms_valid = es_valid && es_ready_go;
 
+always @(posedge clk) begin
+    $display("[EXE_stage] alu_op=%b, src1=%b, src2=%b",
+             alu_op, alu_src1_forward, alu_src2_forward);
+end
 endmodule
 
 module MEM_reg (
@@ -116,7 +119,7 @@ module MEM_reg (
     
 always @(posedge clk) begin
     if(reset) begin
-        MEM_pc         <= 32'h1bfffffc;
+        MEM_pc         <= 32'h1c000000;
         MEM_sram_en    <= 1'b0;
         MEM_sram_we    <= 4'b0;
         MEM_sram_addr  <= 32'b0;
@@ -133,8 +136,7 @@ always @(posedge clk) begin
         MEM_sram_wdata <= EXE_sram_wdata;
         MEM_rf_we      <= EXE_rf_we;
         MEM_rf_waddr   <= EXE_rf_waddr;
-        MEM_sram_wdata <= EXE_sram_wdata;
+        MEM_rf_wdata   <= EXE_rf_wdata;
     end
 end
-
 endmodule

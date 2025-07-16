@@ -16,7 +16,7 @@ module WB_stage(
 );
 reg wb_valid;
 
-assign rf_we_out    = rf_we;
+assign rf_we_out    = to_wb_valid ? rf_we : 4'b0;
 assign rf_waddr_out = rf_waddr;
 assign rf_wdata_out = rf_wdata;
 
