@@ -120,6 +120,12 @@ wire [31:0] rf_rdata2_forward =
     (ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr2)) ? ms_rf_wdata :
     rf_rdata2;
 
+// Load-Use冒险检测
+wire load_use_hazard = 
+    es_rf_we && (es_rf_waddr != 0) && data_sram_en && (
+        (rf_raddr1 == es_rf_waddr) || (rf_raddr2 == es_rf_waddr)
+    );
+
 // 分支判断
 wire rj_eq_rd = (rf_rdata1_forward == rf_rdata2_forward);
     
@@ -170,7 +176,7 @@ always @(posedge clk) begin
 end
 // 流水线控制
 assign ds_pc = pc;
-assign ds_ready_go = !stall;
+assign ds_ready_go = !stall && !load_use_hazard;
 assign ds_allow_in = !ds_valid || es_allow_in && ds_ready_go;
 
 always @(posedge clk) begin
