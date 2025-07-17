@@ -75,16 +75,17 @@ wire inst_b       = (op_31_26 == 6'h14);
 wire inst_bl      = (op_31_26 == 6'h15);
 wire inst_beq     = (op_31_26 == 6'h16);
 wire inst_bne     = (op_31_26 == 6'h17);
+wire inst_bgeu    = (op_31_26 == 6'h1a);
 wire inst_lu12i_w = (op_31_26 == 6'h05) & ~inst[25];
     
 // 辅助信号
 wire need_ui5      = inst_slli_w | inst_srli_w | inst_srai_w;
 wire need_si12     = inst_addi_w | inst_ld_w | inst_st_w;
-wire need_si16     = inst_jirl | inst_beq | inst_bne;
+wire need_si16     = inst_jirl | inst_beq | inst_bne | inst_bgeu;
 wire need_si20     = inst_lu12i_w;
 wire need_si26     = inst_b | inst_bl;
 wire src2_is_4     = inst_jirl | inst_bl;
-wire src_reg_is_rd = inst_beq | inst_bne | inst_st_w;
+wire src_reg_is_rd = inst_beq | inst_bne | inst_bgeu | inst_st_w;
 wire src1_is_pc    = inst_jirl | inst_bl;
 wire dst_is_r1     = inst_bl;
 wire is_imm        = inst_slli_w | inst_srli_w | inst_srai_w | 
@@ -122,14 +123,16 @@ wire [31:0] rf_rdata2_forward =
 
 // 分支判断
 wire rj_eq_rd = (rf_rdata1_forward == rf_rdata2_forward);
+wire rj_geu_rd = (rf_rdata1_forward >= rf_rdata2_forward);
     
 assign br_taken_cancel = (inst_beq && rj_eq_rd) ||
                          (inst_bne && !rj_eq_rd) ||
+                         (inst_bgeu && rj_geu_rd) ||
                           inst_b || 
                           inst_bl || 
                           inst_jirl;
     
-assign br_target = (inst_beq || inst_bne || inst_bl || inst_b) ? (pc + br_offs) : 
+assign br_target = (inst_beq || inst_bne || inst_bgeu || inst_bl || inst_b) ? (pc + br_offs) : 
                       inst_jirl ? (rf_rdata1_forward + jirl_offs) : 32'b0;
     
 // ALU 操作数选择
@@ -154,7 +157,7 @@ assign alu_op[11] = inst_lu12i_w;
 assign data_sram_en = inst_ld_w;
 assign data_sram_we = {4{inst_st_w}};
 assign data_sram_addr= alu_src1 + alu_src2;    
-assign rf_we =  {4{!(inst_st_w | inst_beq | inst_bne | inst_b)}};
+assign rf_we =  {4{!(inst_st_w | inst_beq | inst_bne | inst_bgeu | inst_b)}};
 assign rf_waddr = dst_is_r1 ? 5'd1 : rd;
     
 always @(posedge clk) begin
