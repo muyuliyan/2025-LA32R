@@ -84,8 +84,8 @@ wire inst_lu12i_w = (op_31_26 == 6'h05) & ~inst[25];
     
 // 辅助信号
 wire need_ui5      = inst_slli_w | inst_srli_w | inst_srai_w;
-wire need_si12 = inst_addi_w | inst_andi | inst_ld_w | inst_st_w;
-wire need_si16 = inst_jirl | inst_beq | inst_bne | inst_bge | inst_blt | inst_bgeu | inst_bltu;
+wire need_si12     = inst_addi_w | inst_andi | inst_ld_w | inst_st_w;
+wire need_si16     = inst_jirl | inst_beq | inst_bne | inst_bge | inst_blt | inst_bgeu | inst_bltu;
 wire need_si20     = inst_lu12i_w;
 wire need_si26     = inst_b | inst_bl;
 wire src2_is_4     = inst_jirl | inst_bl;
