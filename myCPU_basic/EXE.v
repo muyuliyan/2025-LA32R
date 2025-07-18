@@ -17,9 +17,11 @@ module EXE_stage(
     input [31:0] alu_src2,      // ALU源操作数2
 
     // 前递输入
+    input        ms_valid,         // MEM阶段有效信号
     input [3:0]  ms_rf_we,         // MEM阶段寄存器写使能
     input [4:0]  ms_rf_waddr,      // MEM阶段寄存器写地址
     input [31:0] ms_rf_wdata,
+    input        wb_valid,         // WB阶段有效信号  
     input [3:0]  wb_rf_we,         // WB阶段寄存器写使能
     input [4:0]  wb_rf_waddr,      // WB阶段寄存器写地址
     input [31:0] wb_rf_wdata,      // WB阶段写回数据
@@ -46,15 +48,15 @@ wire [31:0] alu_result;
 wire [31:0] alu_src1_forward;
 wire [31:0] alu_src2_forward;
 
-// ALU源操作数1前递选择
+// ALU源操作数1前递选择 - 添加valid信号检查
 assign alu_src1_forward = 
-    (ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr1)) ? ms_rf_wdata :
-    (wb_rf_we  && (wb_rf_waddr  != 0) && (wb_rf_waddr  == rf_raddr1)) ? wb_rf_wdata  :
+    (ms_valid && ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr1)) ? ms_rf_wdata :
+    (wb_valid && wb_rf_we && (wb_rf_waddr != 0) && (wb_rf_waddr == rf_raddr1)) ? wb_rf_wdata :
     alu_src1;
-// ALU源操作数2前递选择
+// ALU源操作数2前递选择 - 添加valid信号检查
 assign alu_src2_forward = 
-    (ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr2)) ? ms_rf_wdata :
-    (wb_rf_we  && (wb_rf_waddr  != 0) && (wb_rf_waddr  == rf_raddr2)) ? wb_rf_wdata  :
+    (ms_valid && ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr2)) ? ms_rf_wdata :
+    (wb_valid && wb_rf_we && (wb_rf_waddr != 0) && (wb_rf_waddr == rf_raddr2)) ? wb_rf_wdata :
     alu_src2;
 
 // 使用前递后的操作数

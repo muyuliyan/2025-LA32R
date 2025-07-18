@@ -185,12 +185,18 @@ end
         .rf_rdata2       (rf_rdata2), 
         .es_allow_in     (es_allow_in),
         // 前递 
+        .es_valid        (es_to_ms_valid),     // EXE阶段有效信号
         .es_rf_we        (es_rf_we),       
         .es_rf_waddr     (es_rf_waddr),    
         .es_rf_wdata     (es_rf_wdata),
+        .ms_valid        (ms_to_wb_valid),     // MEM阶段有效信号
         .ms_rf_we        (ms_rf_we),       
         .ms_rf_waddr     (ms_rf_waddr),    
-        .ms_rf_wdata     (ms_rf_wdata),    
+        .ms_rf_wdata     (ms_rf_wdata),
+        .wb_valid        (pwb_valid),          // WB阶段有效信号
+        .wb_rf_we        (wb_rf_we),           // WB阶段写使能
+        .wb_rf_waddr     (wb_rf_waddr),        // WB阶段写地址  
+        .wb_rf_wdata     (wb_rf_wdata),        // WB阶段写数据    
         
         .ds_pc           (ds_pc),
         .br_taken_cancel (br_taken_cancel),
@@ -260,9 +266,11 @@ end
         .ms_allow_in     (ms_allow_in),
         .to_es_valid     (pes_valid),
         // 前递      
+        .ms_valid        (ms_to_wb_valid),    // MEM阶段有效信号
         .ms_rf_we        (ms_rf_we),         
         .ms_rf_waddr     (ms_rf_waddr),      
         .ms_rf_wdata     (ms_rf_wdata),
+        .wb_valid        (pwb_valid),         // WB阶段有效信号
         .wb_rf_we        (wb_rf_we), 
         .wb_rf_waddr     (wb_rf_waddr),      
         .wb_rf_wdata     (wb_rf_wdata),     
@@ -369,9 +377,17 @@ end
         .wb_ready_go     (wb_ready_go)
     );
 
-assign stall = (es_sram_we != 0) && es_to_ms_valid &&
-      ((es_rf_waddr == rf_raddr1 && rf_raddr1 != 0) || 
-       (es_rf_waddr == rf_raddr2 && rf_raddr2 != 0));
+// 改进的stall逻辑 - 包含load-use hazard检测
+assign stall = (
+    // 原有的store相关stall
+    ((es_sram_we != 0) && es_to_ms_valid &&
+     ((es_rf_waddr == rf_raddr1 && rf_raddr1 != 0) || 
+      (es_rf_waddr == rf_raddr2 && rf_raddr2 != 0))) ||
+    // 新增load-use hazard检测  
+    ((es_sram_en && es_sram_we == 0) && es_to_ms_valid && es_rf_we &&
+     ((es_rf_waddr == rf_raddr1 && rf_raddr1 != 0) || 
+      (es_rf_waddr == rf_raddr2 && rf_raddr2 != 0)))
+);
 
 // debug info generate
 assign debug_wb_pc       = pwb_pc;
