@@ -1,17 +1,18 @@
 module EXE_stage(
     input        clk,
     input        reset,
+    input        stall,
     input [31:0] pc,
     input [11:0] alu_op,       
     input        data_sram_en,       
     input [3:0]  data_sram_we,       
     input [31:0] data_sram_addr,
+    input [31:0] data_sram_wdata,
     input [31:0] data_sram_rdata,
     input [3:0]  rf_we,        
     input [4:0]  rf_waddr, 
     input [4:0]  rf_raddr1,
-    input [4:0]  rf_raddr2,
-    input        stall,     
+    input [4:0]  rf_raddr2,   
     
     // 操作数输入
     input [31:0] alu_src1,      // ALU源操作数1
@@ -22,7 +23,10 @@ module EXE_stage(
     input [3:0]  ms_sram_we,
     input [31:0] ms_sram_addr,
     input [31:0] ms_sram_wdata,
-
+    input        wb_valid,
+    input [3:0]  wb_sram_we,
+    input [31:0] wb_sram_addr,
+    input [31:0] wb_sram_wdata,
 
     input        ms_allow_in,
     input        to_es_valid,
@@ -46,8 +50,9 @@ wire [31:0] alu_result;
 wire [31:0] sram_rdata;
 
 // sram 前递
-assign sram_rdata = (ms_sram_we && (ms_sram_addr == data_sram_addr) && ms_valid) ? 
-                    ms_sram_wdata : data_sram_rdata;
+assign sram_rdata = (ms_sram_we && (ms_sram_addr == data_sram_addr) && ms_valid) ? ms_sram_wdata : 
+                    (wb_sram_we && (wb_sram_addr == data_sram_addr) && wb_valid) ? wb_sram_wdata : 
+                    data_sram_rdata;
 // wire [31:0] alu_src1_forward;
 // wire [31:0] alu_src2_forward;
 
@@ -73,13 +78,13 @@ assign es_pc           = pc;
 assign sram_en         = es_valid ? data_sram_en : 1'b0;
 assign sram_we         = es_valid ? data_sram_we : 4'b0;
 assign sram_addr       = alu_result; 
-assign sram_wdata      = alu_src2;
+assign sram_wdata      = data_sram_wdata;
 assign es_rf_we        = rf_we;
 assign es_rf_waddr     = rf_waddr;
 assign es_rf_wdata     = data_sram_en ? sram_rdata : alu_result;
 
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset || stall) begin
         es_valid <= 1'b0;
     end
     else if (es_allow_in) begin
@@ -89,7 +94,7 @@ end
 
 // 流水线控制
 assign es_to_ms_valid = to_es_valid ;
-assign es_ready_go = !stall;
+assign es_ready_go = 1'b1;
 assign es_allow_in = !es_valid || ms_allow_in && es_ready_go;
 
 endmodule

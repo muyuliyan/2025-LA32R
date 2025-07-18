@@ -35,6 +35,7 @@ endmodule
 module ID_reg (
     input clk,
     input reset,
+    input stall,
     input fs_ready_go,
     input ds_allow_in,
     // input IF_valid,
@@ -48,12 +49,10 @@ module ID_reg (
 
 always @(posedge clk) begin
     if(reset) begin
-        // ID_valid <= 1'b1;
         ID_pc <= 32'h1c000000;
         ID_inst <= 32'b0;
     end
     else if(fs_ready_go && ds_allow_in) begin
-        // ID_valid <= IF_valid;
         ID_pc <= IF_pc;
         ID_inst <= IF_inst;
     end

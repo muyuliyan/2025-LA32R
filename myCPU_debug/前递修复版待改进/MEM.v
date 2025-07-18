@@ -1,7 +1,6 @@
 module MEM_stage(
     input        clk,
     input        reset,
-    input        stall,
     input [31:0] pc,
     input [3:0]  data_sram_we,  
     input [31:0] data_sram_wdata,     
@@ -45,7 +44,7 @@ end
 
 // assign ms_to_wb_valid = to_ms_valid;
 assign ms_pc       = pc;
-assign ms_ready_go = !stall; 
+assign ms_ready_go = 1'b1; 
 assign ms_allow_in = !ms_valid || ms_ready_go && wb_allow_in;
 
 endmodule
@@ -55,13 +54,17 @@ module WB_reg (
     input        reset,
     input        ms_ready_go,
     input        wb_allow_in,
-    // input        MEM_valid,
     input [31:0] MEM_pc,
+    input [3:0]  MEM_sram_we,
+    input [31:0] MEM_sram_wdata,
+    input [31:0] MEM_sram_addr,
     input [3:0]  MEM_rf_we,
     input [4:0]  MEM_rf_waddr,
     input [31:0] MEM_rf_wdata,
 
-    // output reg WB_valid,
+    output reg [3:0]  WB_sram_we,
+    output reg [31:0] WB_sram_addr,
+    output reg [31:0] WB_sram_wdata,
     output reg [31:0] WB_pc, 
     output reg [3:0]  WB_rf_we,
     output reg [4:0]  WB_rf_waddr,
@@ -70,18 +73,22 @@ module WB_reg (
     
 always @(posedge clk) begin
     if(reset) begin
-        // WB_valid    <= 1'b0;
-        WB_pc       <= 32'h1c000000;
-        WB_rf_we    <= 4'b0;
-        WB_rf_waddr <= 5'b0;
-        WB_rf_wdata <= 32'b0;
+        WB_sram_we   <= 4'b0;
+        WB_sram_addr <= 32'b0;
+        WB_sram_wdata<= 32'b0;
+        WB_pc        <= 32'h1c000000;
+        WB_rf_we     <= 4'b0;
+        WB_rf_waddr  <= 5'b0;
+        WB_rf_wdata  <= 32'b0;
     end
     else if (ms_ready_go && wb_allow_in) begin
-        // WB_valid    <= MEM_valid;
-        WB_pc       <= MEM_pc;
-        WB_rf_we    <= MEM_rf_we;
-        WB_rf_waddr <= MEM_rf_waddr;
-        WB_rf_wdata <= MEM_rf_wdata;
+        WB_sram_we   <= MEM_sram_we;
+        WB_sram_addr <= MEM_sram_addr;
+        WB_sram_wdata<= MEM_sram_wdata;
+        WB_pc        <= MEM_pc;
+        WB_rf_we     <= MEM_rf_we;
+        WB_rf_waddr  <= MEM_rf_waddr;
+        WB_rf_wdata  <= MEM_rf_wdata;
     end
 end
 

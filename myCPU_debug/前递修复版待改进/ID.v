@@ -35,6 +35,7 @@ module ID_stage(
     output [31:0] alu_src1,
     output [31:0] alu_src2,
     output [11:0] alu_op,
+    output [31:0] data_sram_wdata,
     output        data_sram_en,
     output [3:0]  data_sram_we,
     output [31:0] data_sram_addr,
@@ -46,7 +47,6 @@ module ID_stage(
     output ds_ready_go,
     output  reg ds_valid
 );
-// reg ds_valid;
 
 
 // 指令字段解码
@@ -163,7 +163,8 @@ assign alu_op[11] = inst_lu12i_w;
 // 控制信号生成
 assign data_sram_en = ds_valid ? inst_ld_w : 1'b0;
 assign data_sram_we = {4{inst_st_w}};
-assign data_sram_addr= alu_src1 + alu_src2;    
+assign data_sram_addr = alu_src1 + alu_src2;
+assign data_sram_wdata = rf_rdata2_forward;
 assign rf_we =  {4{!(inst_st_w | inst_beq | inst_bne | inst_b)}};
 assign rf_waddr = dst_is_r1 ? 5'd1 : rd;
     
@@ -192,6 +193,7 @@ endmodule
 module EXE_reg (
     input clk,
     input reset,
+    input stall,
     input ds_ready_go,
     input es_allow_in,
     // input ID_valid,
@@ -204,6 +206,7 @@ module EXE_reg (
     input        ID_sram_en,
     input [3:0]  ID_sram_we,
     input [31:0] ID_sram_addr,
+    input [31:0] ID_sram_wdata,
     input [3:0]  ID_rf_we,
     input [4:0]  ID_rf_waddr,
     
@@ -216,6 +219,7 @@ module EXE_reg (
     output reg [11:0] EXE_alu_op,        // ALU操作码
     output reg        EXE_sram_en,       // 内存使能
     output reg [3:0]  EXE_sram_we,       // 存储器写使能
+    output reg [31:0] EXE_sram_wdata,
     output reg [31:0] EXE_sram_addr,
     output reg [3:0]  EXE_rf_we,         // 寄存器堆写使能
     output reg [4:0]  EXE_rf_waddr       // 寄存器写地址
@@ -231,13 +235,13 @@ module EXE_reg (
             EXE_sram_en   <= 1'b0;
             EXE_sram_we   <= 4'b0;
             EXE_sram_addr <= 32'b0;
+            EXE_sram_wdata<= 32'b0;
             EXE_rf_we     <= 4'b0;
             EXE_rf_waddr  <= 5'b0;
             EXE_rf_raddr1 <= 5'b0;
             EXE_rf_raddr2 <= 5'b0;
         end
         else if(ds_ready_go && es_allow_in) begin
-            // EXE_valid     <= ID_valid;
             EXE_pc        <= ID_pc;
             EXE_alu_src1  <= ID_alu_src1;
             EXE_alu_src2  <= ID_alu_src2;
@@ -245,6 +249,7 @@ module EXE_reg (
             EXE_sram_en   <= ID_sram_en;
             EXE_sram_we   <= ID_sram_we;
             EXE_sram_addr <= ID_sram_addr;
+            EXE_sram_wdata<= ID_sram_wdata;
             EXE_rf_we     <= ID_rf_we;
             EXE_rf_waddr  <= ID_rf_waddr;
             EXE_rf_raddr1 <= ID_rf_raddr1;

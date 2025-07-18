@@ -23,13 +23,13 @@ always @(posedge clk) begin
         pc <= br_target;
         to_fs_valid <= 1'b1;
     end 
-    else if (!stall) begin
-        pc <= pc + 4;
-        to_fs_valid <= 1'b1;
-    end
-    else begin
+    else if(stall) begin
         pc <= pc;
         to_fs_valid <= to_fs_valid;
+    end
+    else begin
+        pc <= pc + 4;
+        to_fs_valid <= 1'b1;
     end
     
 end
