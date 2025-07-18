@@ -9,12 +9,18 @@ module ID_stage(
     input [31:0] rf_rdata1,
     input [31:0] rf_rdata2,
     // 前递信息传递
+    input        es_valid,       // EXE阶段有效信号
     input [3:0]  es_rf_we,      
     input [4:0]  es_rf_waddr,   
     input [31:0] es_rf_wdata,
+    input        ms_valid,       // MEM阶段有效信号
     input [3:0]  ms_rf_we,       // MEM阶段写使能
     input [4:0]  ms_rf_waddr,   // MEM阶段写地址
     input [31:0] ms_rf_wdata,   // MEM阶段写数据
+    input        wb_valid,       // WB阶段有效信号
+    input [3:0]  wb_rf_we,       // WB阶段写使能
+    input [4:0]  wb_rf_waddr,    // WB阶段写地址
+    input [31:0] wb_rf_wdata,    // WB阶段写数据
     
     output [31:0] ds_pc,
     // 分支/跳转信号
@@ -115,14 +121,16 @@ wire [31:0] br_offs = need_si26 ? {{4{i26[25]}}, i26, 2'b0} :
     
 wire [31:0] jirl_offs = {{14{i16[15]}}, i16[15:0], 2'b0};
     
-// 寄存器前递逻辑
+// 寄存器前递逻辑 - 添加valid信号检查
 wire [31:0] rf_rdata1_forward = 
-    (es_rf_we && (es_rf_waddr != 0) && (es_rf_waddr == rf_raddr1)) ? es_rf_wdata :
-    (ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr1)) ? ms_rf_wdata :
+    (es_valid && es_rf_we && (es_rf_waddr != 0) && (es_rf_waddr == rf_raddr1)) ? es_rf_wdata :
+    (ms_valid && ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr1)) ? ms_rf_wdata :
+    (wb_valid && wb_rf_we && (wb_rf_waddr != 0) && (wb_rf_waddr == rf_raddr1)) ? wb_rf_wdata :
     rf_rdata1;
 wire [31:0] rf_rdata2_forward = 
-    (es_rf_we && (es_rf_waddr != 0) && (es_rf_waddr == rf_raddr2)) ? es_rf_wdata :
-    (ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr2)) ? ms_rf_wdata :
+    (es_valid && es_rf_we && (es_rf_waddr != 0) && (es_rf_waddr == rf_raddr2)) ? es_rf_wdata :
+    (ms_valid && ms_rf_we && (ms_rf_waddr != 0) && (ms_rf_waddr == rf_raddr2)) ? ms_rf_wdata :
+    (wb_valid && wb_rf_we && (wb_rf_waddr != 0) && (wb_rf_waddr == rf_raddr2)) ? wb_rf_wdata :
     rf_rdata2;
 
 // 分支判断
