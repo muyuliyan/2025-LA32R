@@ -60,6 +60,8 @@ wire inst_add_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1
 wire inst_sub_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h02);
 wire inst_slt     = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h04);
 wire inst_sltu    = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h05);
+wire inst_slti    = (op_31_26 == 6'h00) & (op_25_22 == 4'hd);
+wire inst_sltui   = (op_31_26 == 6'h00) & (op_25_22 == 4'he); // 新增sltui
 wire inst_nor     = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h08);
 wire inst_and     = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h09);
 wire inst_or      = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h0a);
@@ -70,7 +72,6 @@ wire inst_srai_w  = (op_31_26 == 6'h00) & (op_25_22 == 4'h1) & (op_21_20 == 2'h0
 wire inst_addi_w  = (op_31_26 == 6'h00) & (op_25_22 == 4'ha);
 wire inst_andi    = (op_31_26 == 6'h00) & (op_25_22 == 4'hb);
 wire inst_ori     = (op_31_26 == 6'h00) & (op_25_22 == 4'hc);
-wire inst_slti    = (op_31_26 == 6'h00) & (op_25_22 == 4'hd);
 wire inst_ld_w    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h2);
 wire inst_st_w    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h6);
 wire inst_jirl    = (op_31_26 == 6'h13);
@@ -86,7 +87,8 @@ wire inst_lu12i_w = (op_31_26 == 6'h05) & ~inst[25];
     
 // 辅助信号
 wire need_ui5      = inst_slli_w | inst_srli_w | inst_srai_w;
-wire need_si12     = inst_addi_w | inst_ld_w | inst_st_w | inst_slti;
+// 立即数扩展
+wire need_si12     = inst_addi_w | inst_ld_w | inst_st_w | inst_slti | inst_sltui;
 wire need_ui12     = inst_andi | inst_ori;
 wire need_si16     = inst_jirl | inst_beq | inst_bne | inst_bge | inst_blt | inst_bgeu | inst_bltu;
 wire need_si20     = inst_lu12i_w;
@@ -157,7 +159,7 @@ assign alu_src2 = is_imm ? imm : rf_rdata2_forward;
 assign alu_op[0]  = inst_add_w | inst_addi_w | inst_ld_w | inst_st_w | inst_jirl | inst_bl;
 assign alu_op[1]  = inst_sub_w;
 assign alu_op[2]  = inst_slt | inst_slti;
-assign alu_op[3]  = inst_sltu;
+assign alu_op[3]  = inst_sltu | inst_sltui;
 assign alu_op[4]  = inst_and | inst_andi;
 assign alu_op[5]  = inst_nor;
 assign alu_op[6]  = inst_or | inst_ori;
