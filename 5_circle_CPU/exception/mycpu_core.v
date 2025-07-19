@@ -142,6 +142,37 @@ end
         .waddr  (wb_rf_waddr),
         .wdata  (wb_rf_wdata)
     );
+    int_controller u_irq_ctrl (
+        .clk       (clk),
+        .reset     (reset),
+        .ext_irq   (irq_sync),
+        .mie       (csr_rdata[3]),  // mstatus.MIE
+        .int_req   (int_req),
+        .int_cause (int_cause)
+    );
+    trap_handler u_trap_handler (
+        .clk         (clk),
+        .reset       (reset),
+        // 流水线异常输入
+        .if_ex       (if_exception),
+        .id_ex       (id_exception),
+        .ex_ex       (ex_exception),
+        .mem_ex      (mem_exception),
+        .wb_ex       (wb_exception),
+        // 中断输入
+        .int_req     (int_req),
+        .int_cause   (int_cause),
+        // CSR接口
+        .csr_rdata   (csr_rdata),
+        // 控制输出
+        .flush       (flush),
+        .new_pc      (new_pc),
+        .csr_we      (csr_we),
+        .csr_addr    (csr_addr),
+        .csr_wdata   (csr_wdata)
+    );
+
+//======================= 五级流水线 ========================
     // IF 阶段
     pre_IF_stage u_pre_IF(
         .clk             (clk),
@@ -399,11 +430,6 @@ end
         .wb_ready_go     (wb_ready_go),
         .wb_valid        (wb_valid)
     );
-// ================= 写缓冲寄存器 =================
-// reg         buffer_valid;
-// reg  [3:0]  buffer_we;
-// reg  [31:0] buffer_addr;
-// reg  [31:0] buffer_wdata;
 
 // ================= 冲突检测信号 =================
 wire ld_alu_hazard  = (es_sram_we != 0) && es_to_ms_valid &&
@@ -411,25 +437,6 @@ wire ld_alu_hazard  = (es_sram_we != 0) && es_to_ms_valid &&
        (es_rf_waddr == ds_rf_raddr2 && ds_rf_raddr2 != 0));
 wire stw_ldw_hazard = (ms_sram_we && ms_to_wb_valid && 
                         ds_to_es_valid && ds_sram_en) ;
-
-// // ================= 仲裁逻辑 =================
-// always @(posedge clk) begin
-//     if (reset) begin
-//         buffer_valid <= 1'b0;
-//     end else begin
-//         // 1. 当前有写请求且需要缓冲
-//         if (write_req && read_req && !addr_match) begin
-//             buffer_valid <= 1'b1;
-//             buffer_we    <= ms_sram_we;
-//             buffer_addr  <= ms_sram_addr;
-//             buffer_wdata <= ms_sram_wdata;
-//         end 
-//         // 2. 写缓冲已存在且无新冲突
-//         else if (buffer_valid && !read_req) begin
-//             buffer_valid <= 1'b0;  // 释放缓冲
-//         end
-//     end
-// end
 
 // ================= RAM访问控制 =================
 assign data_sram_en = ds_sram_en || ms_sram_we;
