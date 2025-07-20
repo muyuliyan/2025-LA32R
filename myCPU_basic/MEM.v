@@ -11,6 +11,7 @@ module MEM_stage(
     input [3:0]  rf_we,         
     input [4:0]  rf_waddr,   
     input [31:0] rf_wdata, 
+    input        inst_ld_b, // 传递ld_b指令类型
     input        wb_allow_in,
     input        to_ms_valid,
     
@@ -33,7 +34,22 @@ assign sram_en    = to_ms_valid ? data_sram_en : 1'b0;
 assign sram_we    = to_ms_valid ? data_sram_we : 4'b0;
 assign sram_addr  = data_sram_addr;
 assign sram_wdata = data_sram_wdata;
-assign rf_wdata_out = data_sram_en ? data_sram_rdata : rf_wdata;
+reg [31:0] mem_result;
+always @(*) begin
+    if (data_sram_en && inst_ld_b) begin
+        case (data_sram_addr[1:0])
+            2'b00: mem_result = {{24{data_sram_rdata[7]}},  data_sram_rdata[7:0]};
+            2'b01: mem_result = {{24{data_sram_rdata[15]}}, data_sram_rdata[15:8]};
+            2'b10: mem_result = {{24{data_sram_rdata[23]}}, data_sram_rdata[23:16]};
+            2'b11: mem_result = {{24{data_sram_rdata[31]}}, data_sram_rdata[31:24]};
+        endcase
+    end else if (data_sram_en) begin
+        mem_result = data_sram_rdata;
+    end else begin
+        mem_result = rf_wdata;
+    end
+end
+assign rf_wdata_out = mem_result;
 assign rf_we_out = rf_we;
 assign rf_waddr_out = rf_waddr;
 
