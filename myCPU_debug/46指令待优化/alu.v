@@ -121,47 +121,47 @@ wire [65:0] mul_prod = $signed(alu_src1) * $signed(alu_src2);
 assign hmul_result = mul_prod[63:32];
 assign mul_result =mul_prod[31:0];
 
+// 除法控制信号
+wire is_div = op_div | op_mod | op_udiv | op_umod;
+reg div_allowed;
+always @(posedge clk) begin
+    if (reset) begin
+        div_allowed <= 1'b1;
+    end else begin
+        div_allowed <= ~is_div | div_valid;
+    end
+end
+
+// 除法器握手信号
 reg dividend_tvalid;
 reg divisor_tvalid;
 reg dividend_tvalid_u;
 reg divisor_tvalid_u;
 
-reg div_allowed;
 always @(posedge clk) begin
-  if (reset) begin
-      div_allowed <= 1'b1;
-    end else if (is_div) begin
-      div_allowed <= 1'b0;  // 发起除法请求
-    end else if (div_valid) begin
-      div_allowed <= 1'b1;
+    if (reset) begin
+        dividend_tvalid   <= 1'b0;
+        divisor_tvalid    <= 1'b0;
+        dividend_tvalid_u <= 1'b0;
+        divisor_tvalid_u  <= 1'b0;
+    end else begin
+        // 有符号除法握手
+        if (dividend_tready && divisor_tready) begin
+            dividend_tvalid <= 1'b0;
+            divisor_tvalid  <= 1'b0;
+        end else if ((op_div || op_mod) && div_allowed) begin
+            dividend_tvalid <= 1'b1;
+            divisor_tvalid  <= 1'b1;
+        end
+        // 无符号除法握手
+        if (dividend_tready_u && divisor_tready_u) begin
+            dividend_tvalid_u <= 1'b0;
+            divisor_tvalid_u  <= 1'b0;
+        end else if ((op_udiv || op_umod) && div_allowed) begin
+            dividend_tvalid_u <= 1'b1;
+            divisor_tvalid_u  <= 1'b1;
+        end
     end
-end
-
-// 握手
-always @(posedge clk) begin
-  if (reset) begin  // 复位时清零所有 tvalid 信号
-    dividend_tvalid   <= 1'b0;
-    divisor_tvalid    <= 1'b0;
-    dividend_tvalid_u <= 1'b0;
-    divisor_tvalid_u  <= 1'b0;
-  end else begin
-    if (dividend_tready && divisor_tready) begin
-    dividend_tvalid <= 1'b0;
-    divisor_tvalid <= 1'b0;
-    end
-    else if ((op_div || op_mod) && div_allowed) begin
-      dividend_tvalid <= 1'b1;
-      divisor_tvalid <= 1'b1;
-    end
-    if (dividend_tready_u && divisor_tready_u) begin
-      dividend_tvalid_u <= 1'b0;
-      divisor_tvalid_u <= 1'b0;
-    end
-    else if((op_udiv || op_umod) && div_allowed) begin
-      dividend_tvalid_u <= 1'b1;
-      divisor_tvalid_u <= 1'b1;
-    end
-  end
 end
 
 div_gen_0 u_div_gen_0 (
@@ -195,7 +195,6 @@ assign mod_result  = div_mod_result[31:0];
 assign udiv_result = div_mod_uresult[63:32];
 assign umod_result = div_mod_uresult[31:0];
 
-wire is_div = op_div | op_mod | op_udiv | op_umod;
 assign div_valid = ~is_div | (out_valid | out_valid_u);
 
 // final result mux
