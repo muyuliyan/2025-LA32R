@@ -2,7 +2,8 @@ module ID_stage(
     input        clk,           
     input        reset,         
     input [31:0] pc,            
-    input [31:0] inst,          
+    input [31:0] inst,  
+    input        flush,        
     input        stall, 
     input        to_ds_valid,     
     input        es_allow_in,      
@@ -24,7 +25,7 @@ module ID_stage(
     // csr寄存器接口
     input  [31:0] csr_rdata,      // CSR读取值
 
-    output        csr_we,
+    output [3:0]  csr_we,
     output        csr_re,          // CSR读使能
     output [13:0] csr_num,         // CSR读地址
     output [4:0]  csr_wmask,
@@ -47,10 +48,13 @@ module ID_stage(
     output [4:0]  rf_waddr,
     output [31:0] rf_wdata_csr,
 
+    output        ertn,
+    output        syscall,
+    output [14:0] syscall_code, 
+    output        ds_allow_in,   
+    output        ds_ready_go,
     output reg [3:0] mem_op,
-    output ds_allow_in,   
-    output ds_ready_go,
-    output  reg ds_valid
+    output reg    ds_valid
 );
 
 // 指令字段解码
@@ -117,11 +121,12 @@ wire inst_bgeu    = (op_31_26 == 6'h1b);  // 无符号大于等于
 wire inst_pcaddu12i = (op_31_26 == 6'h07) & ~inst[25]; 
 wire inst_lu12i_w = (op_31_26 == 6'h05) & ~inst[25];
 
-wire inst_csrrd = (op_31_24 == 8'h04) & (rj == 5'h00);
-wire inst_csrwr = (op_31_24 == 8'h04) & (rj == 5'h01);
-wire inst_csrxchg = (op_31_24 == 8'h04) & (rj != 5'00) & (rj != 5'01);
-wire inst_ertn = (op_31_26 == 6'h01) & (op_25_22 == 4'h9) & (op_21_20 == 'h2) &
-                 (op_19_15 == 5'h10) & (inst[14:0] == 15'h3800);
+wire inst_csrrd   = (op_31_24 == 8'h04) & (rj == 5'h00);
+wire inst_csrwr   = (op_31_24 == 8'h04) & (rj == 5'h01);
+wire inst_csrxchg = (op_31_24 == 8'h04) & (rj != 5'h00) & (rj != 5'h01);
+wire inst_ertn    = (op_31_26 == 6'h01) & (op_25_22 == 4'h9) & (op_21_20 == 'h2) &
+                    (op_19_15 == 5'h10) & (inst[14:0] == 15'h3800);
+wire inst_syscall = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h2) & (op_19_15 == 5'h16); 
     
 // 辅助信号
 wire need_ui5        = inst_slli_w | inst_srli_w | inst_srai_w;
@@ -269,7 +274,7 @@ assign csr_wmask = rj;
 assign csr_wdata = rf_rdata2_forward;
 
 always @(posedge clk) begin
-    if(reset) begin
+    if(reset || flush) begin
         ds_valid <= 1'b1;
     end
     else if (br_taken_cancel) begin
@@ -280,6 +285,7 @@ always @(posedge clk) begin
     end   
 end
 
+assign syscall_code = inst_syscall ? inst[14:0] : 15'b0; 
 assign ds_pc = pc;
 assign ds_ready_go = !stall;
 assign ds_allow_in = !ds_valid || es_allow_in && ds_ready_go;
@@ -295,6 +301,7 @@ module EXE_reg (
     input reset,
     input ds_ready_go,
     input es_allow_in,
+    input flush,
     input [4:0] ID_rf_raddr1,
     input [4:0] ID_rf_raddr2,
     input [31:0] ID_pc,
@@ -313,6 +320,9 @@ module EXE_reg (
     input [13:0] ID_csr_num,       // CSR读地址
     input [4:0]  ID_csr_wmask,
     input [31:0] ID_csr_wdata,
+    input        ID_ertn,
+    input        ID_syscall,
+    input [14:0] ID_syscall_code, 
 
     output reg [4:0]  EXE_rf_raddr1,
     output reg [4:0]  EXE_rf_raddr2,
@@ -327,15 +337,18 @@ module EXE_reg (
     output reg [4:0]  EXE_rf_waddr,      // 寄存器写地址
     output reg [31:0] EXE_rf_wdata,
     output reg [3:0]  EXE_mem_op,
-    output reg        EXE_csr_we,        
+    output reg [3:0]  EXE_csr_we,        
     output reg        EXE_csr_re,
     output reg [13:0] EXE_csr_num,
     output reg [4:0]  EXE_csr_wmask,
-    output reg [31:0] EXE_csr_wdata
+    output reg [31:0] EXE_csr_wdata,
+    output reg        EXE_ertn,
+    output reg        EXE_syscall,
+    output reg [14:0] EXE_syscall_code
 );
     // ================== 寄存器更新逻辑 ==================
     always @(posedge clk) begin
-        if (reset) begin
+        if (reset || flush) begin
             EXE_pc        <= 32'h1c000000;
             EXE_alu_src1  <= 33'b0;
             EXE_alu_src2  <= 33'b0;
@@ -349,11 +362,15 @@ module EXE_reg (
             EXE_rf_raddr1 <= 5'b0;
             EXE_rf_raddr2 <= 5'b0;
             EXE_mem_op    <= 4'b0;
-            EXE_csr_we    <= 1'b0;
+            EXE_csr_we    <= 4'b0;
             EXE_csr_re    <= 1'b0;
             EXE_csr_num   <= 14'b0;
             EXE_csr_wmask <= 5'b0;
             EXE_csr_wdata <= 31'b0;
+            EXE_ertn      <= 1'b0;
+            EXE_syscall   <= 1'b0;
+            EXE_syscall_code <= 15'b0;
+            
         end
         else if(ds_ready_go && es_allow_in) begin
             EXE_pc        <= ID_pc;
@@ -374,6 +391,9 @@ module EXE_reg (
             EXE_csr_num   <= ID_csr_num;
             EXE_csr_wmask <= ID_csr_wmask;
             EXE_csr_wdata <= ID_csr_wdata;
+            EXE_ertn      <= ID_ertn;
+            EXE_syscall   <= ID_syscall;
+            EXE_syscall_code <= ID_syscall_code;
         end
     end
 endmodule 

@@ -2,6 +2,7 @@ module EXE_stage(
     input        clk,
     input        reset,
     input        stall,
+    input        flush,
     input [31:0] pc,
     input [17:0] alu_op,       
     input        data_sram_en,            
@@ -13,7 +14,7 @@ module EXE_stage(
     input [31:0] rf_wdata,
     input [4:0]  rf_raddr1,
     input [4:0]  rf_raddr2,  
-    input        csr_we,
+    input [3:0]  csr_we,
     input        csr_re,
     input [13:0] csr_num,
     input [31:0] csr_wdata,
@@ -34,7 +35,13 @@ module EXE_stage(
     input        ms_allow_in,
     input        to_es_valid,
     input [3:0]  mem_op,
- 
+    input        ertn,
+    input        syscall,
+    input [14:0] syscall_code,
+    
+    output        es_ertn,
+    output        es_syscall,
+    output [14:0] es_syscall_code,
     output [3:0]  es_mem_op,
     output [31:0] es_pc,
     output        div_valid,
@@ -44,7 +51,7 @@ module EXE_stage(
     output [3:0]  es_rf_we,        // 寄存器堆写使能
     output [4:0]  es_rf_waddr,     // 寄存器写地址
     output [31:0] es_rf_wdata,
-    output        es_csr_we,
+    output [3:0]  es_csr_we,
     output [13:0] es_csr_num,
     output [31:0] es_csr_wdata,
     output [4:0]  es_csr_wmask, 
@@ -119,9 +126,12 @@ assign es_csr_num      = csr_num;
 assign es_csr_wdata    = csr_wdata;
 assign es_csr_wmask    = csr_wmask; 
 assign es_mem_op       = es_valid ? mem_op : 4'b0;
+assign es_ertn         = ertn;
+assign es_syscall      = syscall;  
+assign es_syscall_code = syscall_code;
 
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset || flush) begin
         es_valid <= 1'b0;
     end
     else if (stall && !(es_valid && !div_valid)) begin 
@@ -142,9 +152,9 @@ endmodule
 module MEM_reg (
     input        clk,
     input        reset,
+    input        flush,
     input        es_ready_go,
     input        ms_allow_in,
-    // input        EXE_valid,
     input [31:0] EXE_pc,
     input [31:0] EXE_sram_addr,
     input [31:0] EXE_sram_wdata,
@@ -152,11 +162,14 @@ module MEM_reg (
     input [3:0]  EXE_rf_we,
     input [4:0]  EXE_rf_waddr,
     input [31:0] EXE_rf_wdata,
-    input        EXE_csr_we,
+    input [3:0]  EXE_csr_we,
     input [13:0] EXE_csr_num,
     input [31:0] EXE_csr_wdata,
     input [4:0]  EXE_csr_wmask, 
     input [3:0]  EXE_mem_op,
+    input        EXE_ertn,
+    input        EXE_syscall,
+    input [14:0] EXE_syscall_code,
 
     output reg [3:0]  MEM_mem_op,
     output reg [31:0] MEM_sram_rdata,
@@ -166,14 +179,17 @@ module MEM_reg (
     output reg [3:0]  MEM_rf_we,
     output reg [4:0]  MEM_rf_waddr,
     output reg [31:0] MEM_rf_wdata,
-    output reg        MEM_csr_we,
+    output reg [3:0]  MEM_csr_we,
     output reg [13:0] MEM_csr_num,
     output reg [31:0] MEM_csr_wdata,
-    output reg [4:0]  MEM_csr_wmask       
+    output reg [4:0]  MEM_csr_wmask,
+    output reg        MEM_ertn,
+    output reg        MEM_syscall,
+    output reg [14:0] MEM_syscall_code       
 );
     
 always @(posedge clk) begin
-    if(reset) begin
+    if(reset || flush) begin
         MEM_pc         <= 32'h1c000000;
         MEM_sram_addr  <= 32'b0;
         MEM_sram_wdata <= 32'b0;
@@ -181,11 +197,14 @@ always @(posedge clk) begin
         MEM_rf_we      <= 4'b0;
         MEM_rf_waddr   <= 5'b0;
         MEM_rf_wdata   <= 32'b0;
-        MEM_csr_we     <= 1'b0;
+        MEM_csr_we     <= 4'b0;
         MEM_csr_num    <= 14'b0;
         MEM_csr_wdata  <= 32'b0;
         MEM_csr_wmask  <= 5'b0; 
-        MEM_mem_op     <= 4'b0;    
+        MEM_mem_op     <= 4'b0; 
+        MEM_ertn       <= 1'b0;
+        MEM_syscall    <= 1'b0;
+        MEM_syscall_code <= 15'b0;         
     end
     else if (es_ready_go && ms_allow_in) begin
         MEM_pc         <= EXE_pc;
@@ -200,6 +219,9 @@ always @(posedge clk) begin
         MEM_csr_wdata  <= EXE_csr_wdata;
         MEM_csr_wmask  <= EXE_csr_wmask;
         MEM_mem_op     <= EXE_mem_op;
+        MEM_ertn       <= EXE_ertn;
+        MEM_syscall    <= MEM_syscall;
+        MEM_syscall_code <= MEM_syscall_code;  
     end
 end
 endmodule

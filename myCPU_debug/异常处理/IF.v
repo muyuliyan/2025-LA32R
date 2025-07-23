@@ -37,17 +37,16 @@ module ID_reg (
     input reset,
     input fs_ready_go,
     input ds_allow_in,
-    // input IF_valid,
+    input flush,
     input [31:0] IF_pc,
     input [31:0] IF_inst,
 
-    // output reg ID_valid,
     output reg [31:0] ID_inst,
     output reg [31:0] ID_pc
 );
 
 always @(posedge clk) begin
-    if(reset) begin
+    if(reset || flush) begin
         ID_pc <= 32'h1c000000;
         ID_inst <= 32'b0;
     end

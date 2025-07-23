@@ -4,6 +4,9 @@ module pre_IF_stage (
     input        br_taken_cancel,
     input        stall,
     input [31:0] br_target,
+    input [31:0] ex_entry,     // 异常入口地址
+    input        wb_ex,        // 异常发生标志
+    input        flush,        // 异常返回指令
     
     output        inst_sram_en,
     output [3:0]  inst_sram_we,
@@ -14,9 +17,14 @@ module pre_IF_stage (
 );
 
 wire [31:0] next_pc;
+wire [31:0] normal_pc;
 always @(posedge clk) begin
     if (reset) begin
         pc <= 32'h1c000000;
+        to_fs_valid <= 1'b1;
+    end
+    else if (flush) begin
+        pc <= ex_entry;
         to_fs_valid <= 1'b1;
     end
     else if (br_taken_cancel) begin
@@ -34,7 +42,8 @@ always @(posedge clk) begin
     
 end
 
-assign next_pc = br_taken_cancel ? br_target : stall ? pc : pc + 4;
+assign normal_pc = br_taken_cancel ? br_target : stall ? pc : pc + 4;
+assign next_pc = flush ? ex_entry : normal_pc;  
 assign inst_sram_we = 4'b0000;
 assign inst_sram_wdata = 32'b0;
 assign inst_sram_addr = next_pc;
