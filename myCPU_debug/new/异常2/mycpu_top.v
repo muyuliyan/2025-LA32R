@@ -1,6 +1,7 @@
 module mycpu_top (
-    input          clk,
-    input          resetn,
+    input         clk,
+    input         resetn,
+    input  [7:0]  interrupt,
     // 指令存储器接口
     input  [31:0] inst_sram_rdata,
     output [31:0] inst_sram_addr,
@@ -30,15 +31,18 @@ end
     // pre_IF
     wire [31:0] pfs_pc;
     wire to_fs_valid;
+    wire pfs_excp_adef;
     // IF
     wire [31:0] fs_pc;
     wire [31:0] inst;
     wire fs_ready_go;
     wire fs_to_ds_valid;
+    wire fs_excp_adef;
     // IF/ID reg
     wire pds_valid;
     wire [31:0] pds_inst;
     wire [31:0] pds_pc;
+    wire pds_excp_adef;
     // ID
     wire [31:0] ds_pc;
     wire [31:0] br_target;
@@ -58,10 +62,17 @@ end
     wire [3:0]  ds_csr_we;
     wire        ds_csr_re;
     wire [13:0] ds_csr_num;
-    wire [31:0]  ds_csr_wmask;
+    wire [31:0] ds_csr_wmask;
     wire [31:0] ds_csr_wdata;
     wire ds_ertn;
-    wire ds_syscall;
+    wire ds_excp_syscall;
+    wire ds_excp_ipe;
+    wire ds_excp_break;
+    wire ds_excp_ine;
+    wire ds_excp_adef;
+    wire ds_has_int;
+    wire ds_ale_op1;
+    wire ds_ale_op2;
     wire [3:0]  ds_mem_op;
     wire ds_allow_in;
     wire ds_ready_go;
@@ -87,7 +98,14 @@ end
     wire [4:0]  pes_rf_waddr;
     wire [31:0] pes_rf_wdata; 
     wire pes_ertn;
-    wire pes_syscall;
+    wire pes_excp_syscall;
+    wire pes_excp_ipe;
+    wire pes_excp_break;
+    wire pes_excp_ine;
+    wire pes_excp_adef;
+    wire pes_has_int;
+    wire pes_ale_op1;
+    wire pes_ale_op2;
     wire [3:0]  pes_mem_op;
     // EXE
     wire [31:0] es_pc;
@@ -104,7 +122,13 @@ end
     wire [31:0]  es_csr_wmask;
     wire [31:0] es_csr_wdata; 
     wire es_ertn;
-    wire es_syscall;
+    wire es_excp_syscall;
+    wire es_excp_ale;
+    wire es_excp_ine;
+    wire es_excp_ipe;
+    wire es_excp_break;
+    wire es_excp_adef;
+    wire es_has_int;
     wire [3:0]  es_mem_op;
     wire es_allow_in;
     wire es_ready_go;
@@ -126,7 +150,13 @@ end
     wire [31:0] pms_csr_wdata;
     wire [31:0]  pms_csr_wmask;
     wire pms_ertn;
-    wire pms_syscall;
+    wire pms_excp_syscall;
+    wire pms_excp_break;
+    wire pms_excp_ale;
+    wire pms_excp_ine;
+    wire pms_excp_ipe;
+    wire pms_excp_adef;
+    wire pms_has_int; 
     wire [3:0]  pms_mem_op;
     // MEM
     wire [3:0]  ms_sram_we;
@@ -139,9 +169,15 @@ end
     wire [3:0]  ms_csr_we;
     wire [13:0] ms_csr_num;
     wire [31:0] ms_csr_wdata;
-    wire [31:0]  ms_csr_wmask; 
+    wire [31:0] ms_csr_wmask; 
     wire ms_ertn;
-    wire ms_syscall;
+    wire ms_excp_syscall;
+    wire ms_excp_ale;
+    wire ms_excp_ine;
+    wire ms_excp_ipe;
+    wire ms_excp_break;
+    wire ms_excp_adef;
+    wire ms_has_int;
     wire ms_allow_in;
     wire ms_ready_go;
     wire ms_to_wb_valid;
@@ -157,9 +193,15 @@ end
     wire [3:0]  pwb_csr_we;
     wire [13:0] pwb_csr_num;
     wire [31:0] pwb_csr_wdata;
-    wire [31:0]  pwb_csr_wmask; 
+    wire [31:0] pwb_csr_wmask; 
     wire pwb_ertn;
-    wire pwb_syscall;
+    wire pwb_excp_syscall;
+    wire pwb_excp_ale;
+    wire pwb_excp_break;
+    wire pwb_excp_ine;
+    wire pwb_excp_ipe;
+    wire pwb_excp_adef;
+    wire pwb_has_int;
     // WB
     wire wb_valid;
     wire wb_allow_in;
@@ -177,18 +219,25 @@ end
     wire [3:0]  wb_csr_we;
     wire [13:0] wb_csr_num;
     wire [31:0] wb_csr_wdata;
-    wire [31:0]  wb_csr_wmask;
+    wire [31:0] wb_csr_wmask;
     wire wb_ertn;
     wire wb_syscall;
     // 全局控制信号
     wire flush;
     wire br_taken_cancel;
     wire stall;
+    wire has_int;
+    wire [31:0] excp_pc;
+    wire [31:0] ertn_pc;
+    wire [1:0]  csr_plv;
+    wire [63:0] timer_64;
+    wire [31:0] csr_tid;
     wire [31:0] rf_rdata1;
     wire [31:0] rf_rdata2;
     wire [31:0] rf_raddr1;
     wire [31:0] rf_raddr2;
     wire [31:0] ex_entry;
+    wire [1:0] plv = csr_plv;
 //======================= 模块实例化 =======================
     // 寄存器堆
     regfile u_regfile (
@@ -213,13 +262,19 @@ end
         .csr_we       (csr_we),
         .csr_wmask    (wb_csr_wmask),
         .csr_wdata    (csr_wdata),
+        .interrupt    (interrupt),
 
-        .ertn_flush   (ertn_flush),           
+        .ertn_flush   (ertn_flush),  
         .wb_ex        (wb_ex),     
         .wb_ecode     (wb_ecode),       
         .wb_esubcode  (wb_esubcode),    
         .wb_pc        (wb_pc),          
-        .ex_entry     (ex_entry) 
+        .excp_pc      (excp_pc),
+        .ertn_pc      (ertn_pc),
+        .timer_64_out (timer_64),
+        .csr_tid_out  (csr_tid),
+        .csr_plv      (csr_plv),
+        .has_int      (has_int)
     );
 
 //======================= 五级流水线 ========================
@@ -230,10 +285,12 @@ end
         .br_taken_cancel (br_taken_cancel),
         .stall           (stall),
         .br_target       (br_target),
-        .ex_entry        (ex_entry),      // 异常入口地址
-        .wb_ex           (wb_ex),         // 异常发生标志
-        .flush           (flush),
+        .excp_flush      (excp_flush),
+        .ertn_flush      (ertn_flush),
+        .excp_pc         (excp_pc),
+        .ertn_pc         (ertn_pc),
 
+        .excp_adef       (pfs_excp_adef),
         .inst_sram_en    (inst_sram_en),
         .inst_sram_we    (inst_sram_we),
         .inst_sram_addr  (inst_sram_addr),
@@ -250,11 +307,13 @@ end
         .ds_allow_in     (ds_allow_in),
         .br_taken_cancel (br_taken_cancel),
         .stall           (stall),
+        .excp_adef       (pfs_excp_adef),
 
         .fs_pc           (fs_pc),
         .inst            (inst),  
         .fs_ready_go     (fs_ready_go),
-        .fs_valid        (fs_to_ds_valid)
+        .fs_valid        (fs_to_ds_valid),
+        .fs_excp_adef    (fs_excp_adef)
     );
     // IF/ID reg
     ID_reg u_ID_reg(
@@ -265,9 +324,11 @@ end
         .IF_pc           (fs_pc),
         .IF_inst         (inst),
         .flush           (flush),
+        .IF_excp_adef    (fs_excp_adef),
 
         .ID_inst         (pds_inst),
-        .ID_pc           (pds_pc)
+        .ID_pc           (pds_pc),
+        .ID_excp_adef    (pds_excp_adef)
     );
     // ID 阶段
     ID_stage u_ID (
@@ -295,6 +356,11 @@ end
         .wb_rf_wdata     (wb_rf_wdata),  
         .csr_rdata       (ds_csr_rdata), 
         .flush           (flush), 
+        .has_int         (has_int),
+        .excp_adef       (pds_excp_adef),
+        .csr_plv         (plv),
+        .timer_64        (timer_64),
+        .csr_tid         (csr_tid),
 
         .csr_we          (ds_csr_we),
         .csr_re          (ds_csr_re),       
@@ -315,12 +381,19 @@ end
         .data_sram_addr  (ds_sram_addr),
         .rf_we           (ds_rf_we),
         .rf_waddr        (ds_rf_waddr),
-        .rf_wdata_csr    (ds_rf_wdata),
+        .rf_wdata        (ds_rf_wdata),
         .ds_allow_in     (ds_allow_in),
         .ds_ready_go     (ds_ready_go),
         .ds_valid        (ds_to_es_valid),
-        .ertn            (ds_ertn),
-        .syscall         (ds_syscall)
+        .ds_ertn         (ds_ertn),
+        .ds_excp_syscall (ds_excp_syscall),
+        .ds_excp_ipe     (ds_excp_ipe),
+        .ds_excp_break   (ds_excp_break),
+        .ds_excp_ine     (ds_excp_ine),
+        .ds_excp_adef    (ds_excp_adef),
+        .ds_has_int      (ds_has_int),
+        .ale_op1         (ds_ale_op1),
+        .ale_op2         (ds_ale_op2)
     );
     // ID/EXE reg
     EXE_reg u_EXE_reg(
@@ -347,8 +420,15 @@ end
         .ID_csr_wmask    (ds_csr_wmask),
         .ID_csr_wdata    (ds_csr_wdata),
         .ID_ertn         (ds_ertn),
-        .ID_syscall      (ds_syscall),
+        .ID_excp_syscall (ds_excp_syscall),
         .ID_mem_op       (ds_mem_op),
+        .ID_excp_ipe     (ds_excp_ipe),
+        .ID_excp_break   (ds_excp_break),
+        .ID_excp_ine     (ds_excp_ine),
+        .ID_excp_adef    (ds_excp_adef),
+        .ID_has_int      (ds_has_int),
+        .ID_ale_op1      (ds_ale_op1),
+        .ID_ale_op2      (ds_ale_op2),
         
         .EXE_mem_op      (pes_mem_op),
         .EXE_rf_raddr1   (pes_rf_raddr1),
@@ -369,7 +449,14 @@ end
         .EXE_csr_wmask   (pes_csr_wmask),
         .EXE_csr_wdata   (pes_csr_wdata),
         .EXE_ertn        (pes_ertn),
-        .EXE_syscall     (pes_syscall)
+        .EXE_excp_syscall(pes_excp_syscall),
+        .EXE_excp_ipe    (pes_excp_ipe),
+        .EXE_excp_break  (pes_excp_break),
+        .EXE_excp_ine    (pes_excp_ine),
+        .EXE_excp_adef   (pes_excp_adef),
+        .EXE_has_int     (pes_has_int),
+        .EXE_ale_op1     (pes_ale_op1),
+        .EXE_ale_op2     (pes_ale_op2)
     );
     // EXE 阶段
     EXE_stage u_EXE (
@@ -392,8 +479,6 @@ end
         .csr_num         (pes_csr_num),
         .csr_wdata       (pes_csr_wdata),
         .csr_wmask       (pes_csr_wmask), 
-        .ertn            (pes_ertn),
-        .syscall         (pes_syscall),
         .stall           (stall),     
         .alu_src1        (pes_alu_src1),      
         .alu_src2        (pes_alu_src2),
@@ -408,7 +493,16 @@ end
         .wb_valid        (wb_valid),
         .wb_sram_we      (wb_sram_we),
         .wb_sram_addr    (wb_sram_addr),
-        .wb_sram_wdata   (wb_sram_wdata), 
+        .wb_sram_wdata   (wb_sram_wdata),
+        .ertn            (pes_ertn),
+        .excp_syscall    (pes_excp_syscall), 
+        .excp_break      (pes_excp_break),
+        .excp_ine        (pes_excp_ine),
+        .excp_ipe        (pes_excp_ipe),
+        .excp_adef       (pes_excp_adef),
+        .has_int         (pes_has_int),
+        .ale_op1         (pes_ale_op1), 
+        .ale_op2         (pes_ale_op2),
 
         .es_csr_we       (es_csr_we),
         .es_csr_num      (es_csr_num),
@@ -423,7 +517,13 @@ end
         .es_rf_waddr     (es_rf_waddr),     
         .es_rf_wdata     (es_rf_wdata),
         .es_ertn         (es_ertn),
-        .es_syscall      (es_syscall),
+        .es_excp_syscall (es_excp_syscall),
+        .es_excp_ale     (es_excp_ale),
+        .es_excp_ine     (es_excp_ine),
+        .es_excp_ipe     (es_excp_ipe),
+        .es_excp_break   (es_excp_break),
+        .es_excp_adef    (es_excp_adef),
+        .es_has_int      (es_has_int),
         .es_allow_in     (es_allow_in),
         .es_ready_go     (es_ready_go),
         .es_valid        (es_to_ms_valid),
@@ -448,7 +548,13 @@ end
         .EXE_csr_wdata   (es_csr_wdata),
         .EXE_csr_wmask   (es_csr_wmask),
         .EXE_ertn        (es_ertn),
-        .EXE_syscall     (es_syscall),
+        .EXE_excp_syscall(es_excp_syscall),
+        .EXE_excp_break  (es_excp_break),
+        .EXE_excp_ale    (es_excp_ale),
+        .EXE_excp_ine    (es_excp_ine),
+        .EXE_excp_ipe    (es_excp_ipe),
+        .EXE_excp_adef   (es_excp_adef),
+        .EXE_has_int     (es_has_int),
         .EXE_mem_op      (es_mem_op),
 
         .MEM_mem_op      (pms_mem_op),
@@ -464,7 +570,13 @@ end
         .MEM_csr_wdata   (pms_csr_wdata),
         .MEM_csr_wmask   (pms_csr_wmask),
         .MEM_ertn        (pms_ertn),
-        .MEM_syscall     (pms_syscall)
+        .MEM_excp_syscall(pms_excp_syscall),
+        .MEM_excp_break  (pms_excp_break),
+        .MEM_excp_ale    (pms_excp_ale),
+        .MEM_excp_ine    (pms_excp_ine),
+        .MEM_excp_ipe    (pms_excp_ipe),
+        .MEM_excp_adef   (pms_excp_adef),
+        .MEM_has_int     (pms_has_int)  
     );
     // MEM 阶段
     MEM_stage u_MEM (
@@ -482,7 +594,13 @@ end
         .csr_wdata       (pms_csr_wdata),
         .csr_wmask       (pms_csr_wmask),
         .ertn            (pms_ertn),
-        .syscall         (pms_syscall), 
+        .excp_syscall    (pms_excp_syscall),
+        .excp_break      (pms_excp_break),
+        .excp_ale        (pms_excp_ale),
+        .excp_ine        (pms_excp_ine),
+        .excp_ipe        (pms_excp_ipe),
+        .excp_adef       (pms_excp_adef),
+        .has_int         (pms_has_int),   
         .mem_op          (pms_mem_op),
         .wb_allow_in     (wb_allow_in),
         .to_ms_valid     (es_to_ms_valid),
@@ -500,7 +618,13 @@ end
         .ms_csr_wdata    (ms_csr_wdata),
         .ms_csr_wmask    (ms_csr_wmask),
         .ms_ertn         (ms_ertn),
-        .ms_syscall      (ms_syscall),
+        .ms_excp_syscall (ms_excp_syscall),
+        .ms_excp_ale     (ms_excp_ale),
+        .ms_excp_ine     (ms_excp_ine),
+        .ms_excp_ipe     (ms_excp_ipe),
+        .ms_excp_break   (ms_excp_break),
+        .ms_excp_adef    (ms_excp_adef),
+        .ms_has_int      (ms_has_int),
         .ms_allow_in     (ms_allow_in),
         .ms_ready_go     (ms_ready_go),
         .ms_valid        (ms_to_wb_valid)
@@ -524,7 +648,13 @@ end
         .MEM_csr_wdata   (ms_csr_wdata),
         .MEM_csr_wmask   (ms_csr_wmask),
         .MEM_ertn        (ms_ertn),
-        .MEM_syscall     (ms_syscall),
+        .MEM_excp_syscall(ms_excp_syscall),
+        .MEM_excp_break  (ms_excp_break),
+        .MEM_excp_ale    (ms_excp_ale),
+        .MEM_excp_ine    (ms_excp_ine),
+        .MEM_excp_ipe    (ms_excp_ipe),
+        .MEM_excp_adef   (ms_excp_adef),
+        .MEM_has_int     (ms_has_int), 
 
         .WB_pc           (pwb_pc), 
         .WB_rf_we        (pwb_rf_we),
@@ -538,7 +668,13 @@ end
         .WB_csr_wdata    (pwb_csr_wdata),
         .WB_csr_wmask    (pwb_csr_wmask),
         .WB_ertn         (pwb_ertn),
-        .WB_syscall      (pwb_syscall)
+        .WB_excp_syscall (pwb_excp_syscall),
+        .WB_excp_ale     (pwb_excp_ale),
+        .WB_excp_break   (pwb_excp_break),
+        .WB_excp_ine     (pwb_excp_ine),
+        .WB_excp_ipe     (pwb_excp_ipe),
+        .WB_excp_adef    (pwb_excp_adef),
+        .WB_has_int      (pwb_has_int)
     );
     // WB 阶段
     WB_stage u_WB (
@@ -556,7 +692,13 @@ end
         .csr_wdata       (pwb_csr_wdata),
         .csr_wmask       (pwb_csr_wmask),
         .ertn            (pwb_ertn),
-        .syscall         (pwb_syscall), 
+        .excp_syscall    (pwb_excp_syscall), 
+        .excp_break      (pwb_excp_break),
+        .excp_ale        (pwb_excp_ale),
+        .excp_ipe        (pwb_excp_ipe),
+        .excp_ine        (pwb_excp_ine),
+        .excp_adef       (pwb_excp_adef),
+        .has_int         (pwb_has_int), 
         .to_wb_valid     (ms_to_wb_valid),
         
         .wb_ex           (wb_ex),
@@ -574,7 +716,6 @@ end
         .wb_csr_wdata    (wb_csr_wdata),
         .wb_csr_wmask    (wb_csr_wmask),
         .wb_ertn         (wb_ertn),
-        .wb_syscall      (wb_syscall),
         .wb_allow_in     (wb_allow_in),
         .wb_ready_go     (wb_ready_go),
         .wb_valid        (wb_valid)
@@ -595,7 +736,8 @@ wire csr_wr_hazard = (es_to_ms_valid && (es_csr_we == 4'hf) && (ds_csr_re == 1'b
 
 // ================== 刷新信号 ======================
 assign ertn_flush = wb_valid && wb_ertn;
-assign flush = (wb_valid && wb_ertn) || (wb_valid && wb_syscall); 
+assign excp_flush = wb_valid && wb_ex;
+assign flush = ertn_flush || excp_flush; 
 
 // ================= DATA_RAM访问控制 =================
 assign data_sram_en = ds_sram_en || ms_sram_we;

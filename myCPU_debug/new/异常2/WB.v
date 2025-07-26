@@ -14,7 +14,13 @@ module WB_stage(
     input [31:0] csr_wmask,     
     input        to_wb_valid,
     input        ertn,
-    input        syscall,
+    input        excp_syscall,
+    input        excp_break,
+    input        excp_ale,
+    input        excp_ipe,
+    input        excp_ine,
+    input        excp_adef,
+    input        has_int,    
     
     output        wb_ex,
     output [5:0]  wb_ecode,
@@ -32,17 +38,24 @@ module WB_stage(
     output [31:0] wb_csr_wmask, 
 
     output        wb_ertn,
-    output        wb_syscall,
-    output wb_allow_in,
-    output wb_ready_go,
+    output        wb_allow_in,
+    output        wb_ready_go,
     output reg wb_valid
 );
 //====================== 异常编码 =====================//
 assign wb_ertn     = ertn;
-assign wb_syscall  = syscall;
-assign wb_ex       = wb_valid && syscall;
-assign wb_ecode    = syscall ? 6'h0b : 6'h00; 
-assign wb_esubcode = 9'h000; 
+assign wb_ex       = wb_valid && (excp_syscall | excp_break |excp_ale | excp_adef |
+                   | excp_ine | excp_ipe | has_int) ;
+assign wb_ecode = has_int       ? 6'h00 :  // 中断(INT)
+                  excp_adef     ? 6'h08 :  // 取指地址错(ADEF)
+                  excp_ipe      ? 6'h0E :  // 指令特权等级错(IPE)
+                  excp_ine      ? 6'h0D :  // 指令不存在(INE)
+                  excp_ale      ? 6'h09 :  // 地址非对齐(ALE)
+                  excp_syscall  ? 6'h0B :  // 系统调用(SYS)
+                  excp_break    ? 6'h0C :  // 断点(BRK)
+                  6'h00;                 
+
+assign wb_esubcode = 9'h000;
 assign wb_pc       = pc;
 
 assign wb_csr_we   = wb_valid ? csr_we : 1'b0;

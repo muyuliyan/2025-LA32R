@@ -16,7 +16,13 @@ module MEM_stage(
     input        to_ms_valid,
     input        div_valid,
     input        ertn,
-    input        syscall,
+    input        excp_syscall,
+    input        excp_break,
+    input        excp_ale,
+    input        excp_ine,
+    input        excp_ipe,
+    input        excp_adef,
+    input        has_int,    
     input [3:0]  mem_op,
     
     output [31:0] ms_pc,
@@ -30,10 +36,16 @@ module MEM_stage(
     output [3:0]  ms_csr_we, 
     output [13:0] ms_csr_num,
     output [31:0] ms_csr_wdata,
-    output [31:0]  ms_csr_wmask,  
+    output [31:0] ms_csr_wmask,  
 
     output        ms_ertn,
-    output        ms_syscall,
+    output        ms_excp_syscall,
+    output        ms_excp_ale,
+    output        ms_excp_ipe,
+    output        ms_excp_ine,
+    output        ms_excp_break,
+    output        ms_excp_adef,
+    output        ms_has_int,
     output ms_allow_in,
     output ms_ready_go,
     output reg ms_valid
@@ -60,7 +72,13 @@ assign ms_csr_num   = csr_num;
 assign ms_csr_wdata = csr_wdata;
 assign ms_csr_wmask = csr_wmask; 
 assign ms_ertn      = ertn;
-assign ms_syscall   = syscall;
+assign ms_excp_syscall   = excp_syscall;
+assign ms_excp_ale  = excp_ale;
+assign ms_excp_ine  = excp_ine;
+assign ms_excp_ipe  = excp_ipe;
+assign ms_excp_break = excp_break;
+assign ms_excp_adef = excp_adef;
+assign ms_has_int   = has_int;
 
 always @(posedge clk) begin
     if(reset || flush) begin
@@ -95,9 +113,15 @@ module WB_reg (
     input [3:0]  MEM_csr_we,
     input [13:0] MEM_csr_num,
     input [31:0] MEM_csr_wdata,
-    input [31:0]  MEM_csr_wmask,
+    input [31:0] MEM_csr_wmask,
     input        MEM_ertn,
-    input        MEM_syscall,
+    input        MEM_excp_syscall,
+    input        MEM_excp_break,
+    input        MEM_excp_ale,
+    input        MEM_excp_ine,
+    input        MEM_excp_ipe,
+    input        MEM_excp_adef,
+    input        MEM_has_int, 
 
     output reg [31:0] WB_pc, 
     output reg [3:0]  WB_rf_we,
@@ -109,9 +133,15 @@ module WB_reg (
     output reg [3:0]  WB_csr_we,
     output reg [13:0] WB_csr_num,
     output reg [31:0] WB_csr_wdata,
-    output reg [31:0]  WB_csr_wmask,
+    output reg [31:0] WB_csr_wmask,
     output reg        WB_ertn,
-    output reg        WB_syscall
+    output reg        WB_excp_syscall,
+    output reg        WB_excp_ale,
+    output reg        WB_excp_break,
+    output reg        WB_excp_ine,
+    output reg        WB_excp_ipe,
+    output reg        WB_excp_adef,
+    output reg        WB_has_int  
 );
     
 always @(posedge clk) begin
@@ -128,7 +158,13 @@ always @(posedge clk) begin
         WB_sram_addr <= 32'b0;
         WB_sram_wdata<= 32'b0;
         WB_ertn      <= 1'b0;
-        WB_syscall   <= 1'b0;
+        WB_excp_syscall   <= 1'b0;
+        WB_excp_ale  <= 1'b0;
+        WB_excp_break<= 1'b0;
+        WB_excp_ine  <= 1'b0;
+        WB_excp_ipe  <= 1'b0;
+        WB_excp_adef <= 1'b0;
+        WB_has_int   <= 1'b0;
     end
     else if (ms_ready_go && wb_allow_in) begin
         WB_pc        <= MEM_pc;
@@ -143,7 +179,13 @@ always @(posedge clk) begin
         WB_csr_wdata <= MEM_csr_wdata;
         WB_csr_wmask <= MEM_csr_wmask; 
         WB_ertn      <= MEM_ertn;
-        WB_syscall   <= MEM_syscall;
+        WB_excp_syscall   <= MEM_excp_syscall;
+        WB_excp_break<= MEM_excp_break;
+        WB_excp_ale  <= MEM_excp_ale;
+        WB_excp_ine  <= MEM_excp_ine;
+        WB_excp_ipe  <= MEM_excp_ipe;
+        WB_excp_adef <= MEM_excp_adef;
+        WB_has_int   <= MEM_has_int;
     end
 end
 

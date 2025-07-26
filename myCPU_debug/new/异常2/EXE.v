@@ -18,7 +18,7 @@ module EXE_stage(
     input        csr_re,
     input [13:0] csr_num,
     input [31:0] csr_wdata,
-    input [31:0]  csr_wmask, 
+    input [31:0] csr_wmask, 
     // 操作数输入
     input [32:0] alu_src1,      // ALU源操作数1
     input [32:0] alu_src2,      // ALU源操作数2
@@ -36,10 +36,23 @@ module EXE_stage(
     input        to_es_valid,
     input [3:0]  mem_op,
     input        ertn,
-    input        syscall,
+    input        excp_syscall,
+    input        excp_break,
+    input        excp_ine,
+    input        excp_ipe,
+    input        excp_adef,
+    input        has_int,  
+    input        ale_op1,
+    input        ale_op2,     
     
     output        es_ertn,
-    output        es_syscall,
+    output        es_excp_syscall,
+    output        es_excp_ale,
+    output        es_excp_ine,
+    output        es_excp_ipe,
+    output        es_excp_break,
+    output        es_excp_adef,
+    output        es_has_int,
     output [3:0]  es_mem_op,
     output [31:0] es_pc,
     output        div_valid,
@@ -52,7 +65,7 @@ module EXE_stage(
     output [3:0]  es_csr_we,
     output [13:0] es_csr_num,
     output [31:0] es_csr_wdata,
-    output [31:0]  es_csr_wmask, 
+    output [31:0] es_csr_wmask, 
 
     output es_allow_in,
     output es_ready_go,
@@ -125,8 +138,14 @@ assign es_csr_wdata    = csr_wdata;
 assign es_csr_wmask    = csr_wmask; 
 assign es_mem_op       = es_valid ? mem_op : 4'b0;
 assign es_ertn         = ertn;
-assign es_syscall      = syscall;  
-
+assign es_excp_syscall = excp_syscall;  
+assign es_excp_ale     = ale_op1 && (data_sram_addr[0] & 1'b0)
+                       | ale_op2 && (data_sram_addr[1] | data_sram_addr[0]);
+assign es_excp_break   = excp_break;
+assign es_excp_ine     = excp_ine;
+assign es_excp_ipe     = excp_ipe;
+assign es_excp_adef    = excp_adef;
+assign es_has_int      = has_int;
 always @(posedge clk) begin
     if (reset || flush) begin
         es_valid <= 1'b0;
@@ -162,10 +181,16 @@ module MEM_reg (
     input [3:0]  EXE_csr_we,
     input [13:0] EXE_csr_num,
     input [31:0] EXE_csr_wdata,
-    input [31:0]  EXE_csr_wmask, 
+    input [31:0] EXE_csr_wmask, 
     input [3:0]  EXE_mem_op,
     input        EXE_ertn,
-    input        EXE_syscall,
+    input        EXE_excp_syscall,
+    input        EXE_excp_break,
+    input        EXE_excp_ale,
+    input        EXE_excp_ine,
+    input        EXE_excp_ipe,
+    input        EXE_excp_adef,
+    input        EXE_has_int, 
 
     output reg [3:0]  MEM_mem_op,
     output reg [31:0] MEM_sram_rdata,
@@ -178,9 +203,15 @@ module MEM_reg (
     output reg [3:0]  MEM_csr_we,
     output reg [13:0] MEM_csr_num,
     output reg [31:0] MEM_csr_wdata,
-    output reg [31:0]  MEM_csr_wmask,
+    output reg [31:0] MEM_csr_wmask,
     output reg        MEM_ertn,
-    output reg        MEM_syscall    
+    output reg        MEM_excp_syscall,
+    output reg        MEM_excp_break,
+    output reg        MEM_excp_ale,
+    output reg        MEM_excp_ine,
+    output reg        MEM_excp_ipe,
+    output reg        MEM_excp_adef,
+    output reg        MEM_has_int    
 );
     
 always @(posedge clk) begin
@@ -198,7 +229,13 @@ always @(posedge clk) begin
         MEM_csr_wmask  <= 32'b0; 
         MEM_mem_op     <= 4'b0; 
         MEM_ertn       <= 1'b0;
-        MEM_syscall    <= 1'b0;       
+        MEM_excp_syscall <= 1'b0; 
+        MEM_excp_break <= 1'b0;
+        MEM_excp_ale   <= 1'b0;
+        MEM_excp_ine   <= 1'b0;
+        MEM_excp_ipe   <= 1'b0;
+        MEM_excp_adef  <= 1'b0;
+        MEM_has_int    <= 1'b0;          
     end
     else if (es_ready_go && ms_allow_in) begin
         MEM_pc         <= EXE_pc;
@@ -214,7 +251,13 @@ always @(posedge clk) begin
         MEM_csr_wmask  <= EXE_csr_wmask;
         MEM_mem_op     <= EXE_mem_op;
         MEM_ertn       <= EXE_ertn;
-        MEM_syscall    <= EXE_syscall;
+        MEM_excp_syscall <= EXE_excp_syscall;
+        MEM_excp_ale   <= EXE_excp_ale;
+        MEM_excp_break <= EXE_excp_break;
+        MEM_excp_ine   <= EXE_excp_ine;
+        MEM_excp_ipe   <= EXE_excp_ipe;
+        MEM_excp_adef  <= EXE_excp_adef;
+        MEM_has_int    <= EXE_has_int;
     end
 end
 endmodule

@@ -23,7 +23,13 @@ module ID_stage(
     input [4:0]  wb_rf_waddr,      // WB阶段寄存器写地址
     input [31:0] wb_rf_wdata,      // WB阶段写回数据
     // csr寄存器接口
-    input  [31:0] csr_rdata,      // CSR读取值
+    input [31:0] csr_rdata,      // CSR读取值
+    input        has_int,
+    // 异常中断
+    input        excp_adef,
+    input [1:0]  csr_plv,
+    input [63:0] timer_64,
+    input [31:0] csr_tid,
 
     output [3:0]  csr_we,
     output        csr_re,          // CSR读使能
@@ -44,12 +50,19 @@ module ID_stage(
     output [31:0] data_sram_wdata,
     output        data_sram_en,
     output [31:0] data_sram_addr,
+    output        ale_op1,
+    output        ale_op2,
     output [3:0]  rf_we,
     output [4:0]  rf_waddr,
-    output [31:0] rf_wdata_csr,
+    output [31:0] rf_wdata,
 
-    output        ertn,
-    output        syscall,
+    output        ds_ertn,
+    output        ds_excp_ipe,
+    output        ds_excp_break,
+    output        ds_excp_syscall,
+    output        ds_excp_ine,
+    output        ds_excp_adef,
+    output        ds_has_int,
     output        ds_allow_in,   
     output        ds_ready_go,
     output reg [3:0] mem_op,
@@ -58,74 +71,174 @@ module ID_stage(
 
 // 指令字段解码
 wire [5:0] op_31_26 = inst[31:26];
-wire [7:0] op_31_24 = inst[31:24];
 wire [3:0] op_25_22 = inst[25:22];
 wire [1:0] op_21_20 = inst[21:20];
 wire [4:0] op_19_15 = inst[19:15];
 wire [4:0] rd       = inst[4:0];
 wire [4:0] rj       = inst[9:5];
 wire [4:0] rk       = inst[14:10];
-    
+wire [63:0] op_31_26_d;
+wire [15:0] op_25_22_d;
+wire [3:0]  op_21_20_d;
+wire [31:0] op_19_15_d;
+wire [31:0] rd_d;
+wire [31:0] rj_d;
+wire [31:0] rk_d;
 // 立即数字段
 wire [11:0] i12 = inst[21:10];
 wire [19:0] i20 = inst[24:5];
 wire [15:0] i16 = inst[25:10];
 wire [25:0] i26 = {inst[9:0], inst[25:10]};
-    
-// 指令识别
-wire inst_add_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h00);
-wire inst_sub_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h02);
-wire inst_slt     = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h04);
-wire inst_sltu    = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h05);
-wire inst_nor     = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h08);
-wire inst_and     = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h09);
-wire inst_or      = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h0a);
-wire inst_xor     = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h0b);
-wire inst_slli_w  = (op_31_26 == 6'h00) & (op_25_22 == 4'h1) & (op_21_20 == 2'h0) & (op_19_15 == 5'h01);
-wire inst_srli_w  = (op_31_26 == 6'h00) & (op_25_22 == 4'h1) & (op_21_20 == 2'h0) & (op_19_15 == 5'h09);
-wire inst_srai_w  = (op_31_26 == 6'h00) & (op_25_22 == 4'h1) & (op_21_20 == 2'h0) & (op_19_15 == 5'h11);
-wire inst_sll_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h0e); 
-wire inst_srl_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h0f); 
-wire inst_sra_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h10); 
-wire inst_mul_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h18);
-wire inst_mulh_w  = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h19);
-wire inst_mulh_wu = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h1) & (op_19_15 == 5'h1a);
-wire inst_div_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h2) & (op_19_15 == 5'h00);
-wire inst_mod_w   = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h2) & (op_19_15 == 5'h01);
-wire inst_div_wu  = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h2) & (op_19_15 == 5'h02);
-wire inst_mod_wu  = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h2) & (op_19_15 == 5'h03);
-wire inst_addi_w  = (op_31_26 == 6'h00) & (op_25_22 == 4'ha);
-wire inst_slti    = (op_31_26 == 6'h00) & (op_25_22 == 4'h8);   
-wire inst_sltui   = (op_31_26 == 6'h00) & (op_25_22 == 4'h9);   
-wire inst_andi    = (op_31_26 == 6'h00) & (op_25_22 == 4'hd);   
-wire inst_ori     = (op_31_26 == 6'h00) & (op_25_22 == 4'he);   
-wire inst_xori    = (op_31_26 == 6'h00) & (op_25_22 == 4'hf);   
-wire inst_ld_w    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h2);
-wire inst_ld_b    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h0);  // ld.b
-wire inst_ld_h    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h1);  // ld.h
-wire inst_ld_bu   = (op_31_26 == 6'h0a) & (op_25_22 == 4'h8);  // ld.bu
-wire inst_ld_hu   = (op_31_26 == 6'h0a) & (op_25_22 == 4'h9);  // ld.hu
-wire inst_st_b    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h4);  // st.b
-wire inst_st_h    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h5);  // st.h
-wire inst_st_w    = (op_31_26 == 6'h0a) & (op_25_22 == 4'h6);
-wire inst_jirl    = (op_31_26 == 6'h13);
-wire inst_b       = (op_31_26 == 6'h14);
-wire inst_bl      = (op_31_26 == 6'h15);
-wire inst_beq     = (op_31_26 == 6'h16);
-wire inst_bne     = (op_31_26 == 6'h17);
-wire inst_blt     = (op_31_26 == 6'h18);  // 有符号小于
-wire inst_bge     = (op_31_26 == 6'h19);  // 有符号大于等于
-wire inst_bltu    = (op_31_26 == 6'h1a);  // 无符号小于
-wire inst_bgeu    = (op_31_26 == 6'h1b);  // 无符号大于等于
-wire inst_pcaddu12i = (op_31_26 == 6'h07) & ~inst[25]; 
-wire inst_lu12i_w = (op_31_26 == 6'h05) & ~inst[25];
 
-wire inst_csrrd   = (op_31_24 == 8'h04) & (rj == 5'h00);
-wire inst_csrwr   = (op_31_24 == 8'h04) & (rj == 5'h01);
-wire inst_csrxchg = (op_31_24 == 8'h04) & (rj != 5'h00) & (rj != 5'h01);
-wire inst_ertn    = (op_31_26 == 6'h01) & (op_25_22 == 4'h9) & (op_21_20 == 'h0) &
-                    (op_19_15 == 5'h10) & (inst[14:0] == 15'h3800);
-wire inst_syscall = (op_31_26 == 6'h00) & (op_25_22 == 4'h0) & (op_21_20 == 2'h2) & (op_19_15 == 5'h16); 
+// 解码器
+decoder_6_64 u_dec0 (
+      .in (op_31_26),
+      .out(op_31_26_d)
+  );
+  decoder_4_16 u_dec1 (
+      .in (op_25_22),
+      .out(op_25_22_d)
+  );
+  decoder_2_4 u_dec2 (
+      .in (op_21_20),
+      .out(op_21_20_d)
+  );
+  decoder_5_32 u_dec3 (
+      .in (op_19_15),
+      .out(op_19_15_d)
+  );
+
+  decoder_5_32 u_dec4 (
+      .in (rd),
+      .out(rd_d)
+  );
+  decoder_5_32 u_dec5 (
+      .in (rj),
+      .out(rj_d)
+  );
+  decoder_5_32 u_dec6 (
+      .in (rk),
+      .out(rk_d)
+  );
+
+// 指令识别（统一使用解码器输出）
+wire inst_add_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h00];
+wire inst_sub_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h02];
+wire inst_slt     = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h04];
+wire inst_sltu    = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h05];
+wire inst_nor     = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h08];
+wire inst_and     = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h09];
+wire inst_or      = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h0a];
+wire inst_xor     = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h0b];
+wire inst_slli_w  = op_31_26_d[6'h00] & op_25_22_d[4'h1] & op_21_20_d[2'h0] & op_19_15_d[5'h01];
+wire inst_srli_w  = op_31_26_d[6'h00] & op_25_22_d[4'h1] & op_21_20_d[2'h0] & op_19_15_d[5'h09];
+wire inst_srai_w  = op_31_26_d[6'h00] & op_25_22_d[4'h1] & op_21_20_d[2'h0] & op_19_15_d[5'h11];
+wire inst_sll_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h0e]; 
+wire inst_srl_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h0f]; 
+wire inst_sra_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h10]; 
+wire inst_mul_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h18];
+wire inst_mulh_w  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h19];
+wire inst_mulh_wu = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h1a];
+wire inst_div_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h00];
+wire inst_mod_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h01];
+wire inst_div_wu  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h02];
+wire inst_mod_wu  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h03];
+wire inst_addi_w  = op_31_26_d[6'h00] & op_25_22_d[4'ha];
+wire inst_slti    = op_31_26_d[6'h00] & op_25_22_d[4'h8];   
+wire inst_sltui   = op_31_26_d[6'h00] & op_25_22_d[4'h9];   
+wire inst_andi    = op_31_26_d[6'h00] & op_25_22_d[4'hd];   
+wire inst_ori     = op_31_26_d[6'h00] & op_25_22_d[4'he];   
+wire inst_xori    = op_31_26_d[6'h00] & op_25_22_d[4'hf];   
+wire inst_ld_w    = op_31_26_d[6'h0a] & op_25_22_d[4'h2];
+wire inst_ld_b    = op_31_26_d[6'h0a] & op_25_22_d[4'h0];  // ld.b
+wire inst_ld_h    = op_31_26_d[6'h0a] & op_25_22_d[4'h1];  // ld.h
+wire inst_ld_bu   = op_31_26_d[6'h0a] & op_25_22_d[4'h8];  // ld.bu
+wire inst_ld_hu   = op_31_26_d[6'h0a] & op_25_22_d[4'h9];  // ld.hu
+wire inst_st_b    = op_31_26_d[6'h0a] & op_25_22_d[4'h4];  // st.b
+wire inst_st_h    = op_31_26_d[6'h0a] & op_25_22_d[4'h5];  // st.h
+wire inst_st_w    = op_31_26_d[6'h0a] & op_25_22_d[4'h6];
+wire inst_jirl    = op_31_26_d[6'h13];
+wire inst_b       = op_31_26_d[6'h14];
+wire inst_bl      = op_31_26_d[6'h15];
+wire inst_beq     = op_31_26_d[6'h16];
+wire inst_bne     = op_31_26_d[6'h17];
+wire inst_blt     = op_31_26_d[6'h18];  // 有符号小于
+wire inst_bge     = op_31_26_d[6'h19];  // 有符号大于等于
+wire inst_bltu    = op_31_26_d[6'h1a];  // 无符号小于
+wire inst_bgeu    = op_31_26_d[6'h1b];  // 无符号大于等于
+wire inst_pcaddu12i = op_31_26_d[6'h07] & ~inst[25]; 
+wire inst_lu12i_w = op_31_26_d[6'h05] & ~inst[25];
+
+wire inst_csrrd   = op_31_26_d[6'h01] & ~inst[25] & ~inst[24] & rj_d[5'h00];
+wire inst_csrwr   = op_31_26_d[6'h01] & ~inst[25] & ~inst[24] & rj_d[5'h01];
+wire inst_csrxchg = op_31_26_d[6'h01] & ~inst[25] & ~inst[24] & (~rj_d[5'h00] & ~rj_d[5'h01]); 
+wire inst_ertn    = op_31_26_d[6'h01] & op_25_22_d[4'h9] & op_21_20_d[2'h0] & 
+                    op_19_15_d[5'h10] & rk_d[5'h0e] & rj_d[5'h00] & rd_d[5'h00];
+wire inst_syscall = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h16]; 
+wire inst_break   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h14];
+wire inst_rdcntvl_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & 
+                      op_19_15_d[5'h00] & rk_d[5'h18] & rj_d[5'h00] & !rd_d[5'h00];
+wire inst_rdcntvh_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & 
+                      op_19_15_d[5'h00] & rk_d[5'h19] & rj_d[5'h00];
+wire inst_rdcntid_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & 
+                      op_19_15_d[5'h00] & rk_d[5'h18] & rd_d[5'h00];
+
+// 指令使能，用于判断INE
+assign inst_valid =  inst_add_w      |
+                     inst_sub_w      |
+                     inst_slt        |
+                     inst_sltu       |
+                     inst_nor        |
+                     inst_and        |
+                     inst_or         |
+                     inst_xor        |
+                     inst_sll_w      |
+                     inst_srl_w      |
+                     inst_sra_w      |
+                     inst_mul_w      |
+                     inst_mulh_w     |
+                     inst_mulh_wu    |
+                     inst_div_w      |
+                     inst_mod_w      |
+                     inst_div_wu     |
+                     inst_mod_wu     |
+                     inst_break      |
+                     inst_syscall    |
+                     inst_slli_w     |
+                     inst_srli_w     |
+                     inst_srai_w     |
+                     inst_slti       |
+                     inst_sltui      |
+                     inst_addi_w     |
+                     inst_andi       |
+                     inst_ori        |
+                     inst_xori       |
+                     inst_ld_b       |
+                     inst_ld_h       |
+                     inst_ld_w       |
+                     inst_st_b       |
+                     inst_st_h       |
+                     inst_st_w       |
+                     inst_ld_bu      |
+                     inst_ld_hu      |
+                     inst_jirl       |
+                     inst_b          |
+                     inst_bl         |
+                     inst_beq        |
+                     inst_bne        |
+                     inst_blt        |
+                     inst_bge        |
+                     inst_bltu       |
+                     inst_bgeu       |
+                     inst_lu12i_w    |
+                     inst_pcaddu12i  |
+                     inst_csrrd      |
+                     inst_csrwr      |
+                     inst_csrxchg    |
+                     inst_rdcntid_w  |
+                     inst_rdcntvh_w  |
+                     inst_rdcntvl_w  |
+                     inst_ertn       ;
 // 辅助信号
 wire need_ui5        = inst_slli_w | inst_srli_w | inst_srai_w;
 wire need_si12       = inst_addi_w | inst_ld_w | inst_st_w | inst_slti | inst_sltui
@@ -143,6 +256,7 @@ wire src_reg_is_rd   =  inst_st_w | inst_st_b | inst_st_h |
                         inst_bltu | inst_bgeu| inst_csrwr | inst_csrxchg;
 wire src1_is_pc      = inst_jirl | inst_bl | inst_pcaddu12i;
 wire dst_is_r1       = inst_bl;
+wire dst_is_rj       = inst_rdcntid_w;
 wire is_imm          = inst_slli_w | inst_srli_w | inst_srai_w | 
                        inst_addi_w | inst_ld_w | inst_st_w | 
                        inst_lu12i_w | inst_jirl | inst_bl | inst_b |
@@ -245,7 +359,8 @@ always @(*) begin
     else if (inst_st_w)  mem_op = 4'b0110; // 存储-字
     else mem_op = 4'b0000; // 非内存操作
 end
-
+assign ale_op1 = inst_ld_h | inst_ld_hu | inst_st_h;
+assign ale_op2 = inst_ld_w | inst_st_w;
 // 控制信号生成
 assign data_sram_en = ds_valid ? (inst_ld_w | inst_ld_b | inst_ld_h | inst_ld_bu | inst_ld_hu | 
                                   inst_st_w | inst_st_b | inst_st_h) : 1'b0;
@@ -261,8 +376,15 @@ assign data_sram_wdata = st_data;
 assign rf_we =  {4{!(inst_st_w | inst_st_b | inst_st_h | 
                     inst_beq | inst_bne | inst_b | 
                     inst_blt | inst_bge | inst_bltu | inst_bgeu)}};
-assign rf_waddr = dst_is_r1 ? 5'd1 : rd;
-assign rf_wdata_csr = csr_rdata;
+assign rf_waddr = dst_is_r1 ? 5'd1 : 
+                  dst_is_rj ? rj :   
+                  rd;       
+wire [31:0] timer_data = 
+    inst_rdcntvl_w ? timer_64[31:0]  :  // 低32位
+    inst_rdcntvh_w ? timer_64[63:32] :  // 高32位
+    inst_rdcntid_w ? csr_tid        :   // TID值
+    csr_rdata;         
+assign rf_wdata = timer_data;
 
 // CSR使能地址
 assign csr_we = {4{ds_valid & (inst_csrwr | inst_csrxchg)}};
@@ -283,8 +405,15 @@ always @(posedge clk) begin
     end   
 end
 
-assign ertn = inst_ertn;
-assign syscall = inst_syscall;
+wire  kernel_inst = inst_csrrd | inst_csrwr | inst_csrxchg | inst_ertn;
+assign ds_ertn = inst_ertn;
+assign ds_excp_syscall = inst_syscall;
+assign ds_excp_break = inst_break;
+assign ds_excp_ipe = (csr_plv == 2'b11) && kernel_inst; 
+assign ds_excp_ine = (~inst_valid) && (pc != 32'h1c000000);
+assign ds_excp_adef = excp_adef;
+assign ds_has_int = has_int;
+
 assign ds_pc = pc;
 assign ds_ready_go = !stall;
 assign ds_allow_in = !ds_valid || es_allow_in && ds_ready_go;
@@ -317,10 +446,17 @@ module EXE_reg (
     input [3:0]  ID_csr_we,
     input        ID_csr_re,    
     input [13:0] ID_csr_num,       // CSR读地址
-    input [31:0]  ID_csr_wmask,
+    input [31:0] ID_csr_wmask,
     input [31:0] ID_csr_wdata,
     input        ID_ertn,
-    input        ID_syscall,
+    input        ID_excp_syscall,
+    input        ID_excp_ipe,
+    input        ID_excp_break,
+    input        ID_excp_ine,
+    input        ID_excp_adef,
+    input        ID_has_int,
+    input        ID_ale_op1,
+    input        ID_ale_op2,
 
     output reg [4:0]  EXE_rf_raddr1,
     output reg [4:0]  EXE_rf_raddr2,
@@ -341,7 +477,14 @@ module EXE_reg (
     output reg [31:0]  EXE_csr_wmask,
     output reg [31:0] EXE_csr_wdata,
     output reg        EXE_ertn,
-    output reg        EXE_syscall
+    output reg        EXE_excp_syscall,
+    output reg        EXE_excp_ipe,
+    output reg        EXE_excp_break,
+    output reg        EXE_excp_ine,
+    output reg        EXE_excp_adef,
+    output reg        EXE_has_int,
+    output reg        EXE_ale_op1,
+    output reg        EXE_ale_op2
 );
     // ================== 寄存器更新逻辑 ==================
     always @(posedge clk) begin
@@ -365,7 +508,14 @@ module EXE_reg (
             EXE_csr_wmask <= 32'b0;
             EXE_csr_wdata <= 31'b0;
             EXE_ertn      <= 1'b0;
-            EXE_syscall   <= 1'b0;            
+            EXE_excp_syscall   <= 1'b0; 
+            EXE_excp_ipe  <= 1'b0;
+            EXE_excp_break<= 1'b0;
+            EXE_excp_ine  <= 1'b0;
+            EXE_excp_adef <= 1'b0;
+            EXE_has_int   <= 1'b0; 
+            EXE_ale_op1   <= 1'b0;
+            EXE_ale_op2   <= 1'b0;          
         end
         else if(ds_ready_go && es_allow_in) begin
             EXE_pc        <= ID_pc;
@@ -387,7 +537,14 @@ module EXE_reg (
             EXE_csr_wmask <= ID_csr_wmask;
             EXE_csr_wdata <= ID_csr_wdata;
             EXE_ertn      <= ID_ertn;
-            EXE_syscall   <= ID_syscall;
+            EXE_excp_syscall   <= ID_excp_syscall;
+            EXE_excp_ipe  <= ID_excp_ipe;
+            EXE_excp_break<= ID_excp_break;
+            EXE_excp_ine  <= ID_excp_ine;
+            EXE_excp_adef <= ID_excp_adef;
+            EXE_has_int   <= ID_has_int; 
+            EXE_ale_op1   <= ID_ale_op1;  
+            EXE_ale_op2   <= ID_ale_op2;
         end
     end
 endmodule 
