@@ -48,7 +48,7 @@ always @(posedge clk) begin
     
 end
 
-assign excp_adef = (pc[1:0] != 2'b00);
+assign excp_adef = (pc[1:0] != 2'b00) || (br_taken_cancel && &(~br_target) );
 assign next_pc = br_taken_cancel ? br_target :  
                  ertn_flush ? ertn_pc :
                  excp_flush ? excp_pc : 

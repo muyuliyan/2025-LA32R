@@ -1,6 +1,7 @@
 module alu(
   input         clk,
   input         reset,
+  input         flush,
   input [17:0]  alu_op,
   input [32:0]  alu_src1,
   input [32:0]  alu_src2,
@@ -139,28 +140,30 @@ reg dividend_tvalid_u;
 reg divisor_tvalid_u;
 
 always @(posedge clk) begin
-    if (reset) begin
+    if (reset || flush) begin
         dividend_tvalid   <= 1'b0;
         divisor_tvalid    <= 1'b0;
         dividend_tvalid_u <= 1'b0;
         divisor_tvalid_u  <= 1'b0;
     end else begin
         // 有符号除法握手
-        if (dividend_tready && divisor_tready) begin
-            dividend_tvalid <= 1'b0;
-            divisor_tvalid  <= 1'b0;
-        end else if ((op_div || op_mod) && div_allowed) begin
+        if ((op_div || op_mod) && div_allowed) begin
             dividend_tvalid <= 1'b1;
             divisor_tvalid  <= 1'b1;
         end
+        else if (dividend_tready && divisor_tready) begin
+            dividend_tvalid <= 1'b0;
+            divisor_tvalid  <= 1'b0;
+        end 
         // 无符号除法握手
-        if (dividend_tready_u && divisor_tready_u) begin
-            dividend_tvalid_u <= 1'b0;
-            divisor_tvalid_u  <= 1'b0;
-        end else if ((op_udiv || op_umod) && div_allowed) begin
+        if ((op_udiv || op_umod) && div_allowed) begin
             dividend_tvalid_u <= 1'b1;
             divisor_tvalid_u  <= 1'b1;
         end
+        else if (dividend_tready_u && divisor_tready_u) begin
+            dividend_tvalid_u <= 1'b0;
+            divisor_tvalid_u  <= 1'b0;
+        end  
     end
 end
 

@@ -117,6 +117,7 @@ assign sram_rdata = (ms_sram_we && (ms_sram_addr == data_sram_addr) && ms_valid)
 alu u_alu(
     .clk        (clk),
     .reset      (reset),
+    .flush      (flush),
     .alu_op     (alu_op),
     .alu_src1   (alu_src1),   
     .alu_src2   (alu_src2),  
